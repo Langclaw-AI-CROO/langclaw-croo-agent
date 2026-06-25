@@ -10,7 +10,9 @@ export type CrooEvidenceStage =
   | "negotiation_accepted"
   | "order_paid"
   | "order_delivered"
-  | "order_failed";
+  | "order_failed"
+  | "order_recovered"
+  | "order_reconcile_skipped";
 
 export type CrooOrderEvidence = {
   capabilityId?: string;

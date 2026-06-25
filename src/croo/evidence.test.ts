@@ -83,3 +83,46 @@ test("evidenceForDelivery includes proof fields", () => {
   assert.equal(evidence.sourceCount, 2);
   assert.equal(evidence.stage, "order_delivered");
 });
+
+test("evidenceForOrder supports safe recovery stages", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "langclaw-croo-evidence-recovery-"));
+  const filePath = path.join(tempDir, "orders.jsonl");
+
+  try {
+    const order = {
+      id: "order-3",
+      capabilityId: "langclaw.onchain.intelligence" as const,
+      serviceId: "svc-onchain",
+      input: { topic: "secret sk-proj-secret" },
+    };
+
+    await appendCrooOrderEvidence(
+      evidenceForOrder("order_recovered", order, {
+        deliveryHash: "hash-2",
+        error: "already submitted with sk-secret",
+        negotiationId: "neg-3",
+        orderId: "order-3",
+      }),
+      { filePath }
+    );
+    await appendCrooOrderEvidence(
+      evidenceForOrder("order_reconcile_skipped", order, {
+        error: "terminal_status:completed",
+        negotiationId: "neg-4",
+        orderId: "order-4",
+      }),
+      { filePath }
+    );
+
+    const lines = (await readFile(filePath, "utf8")).trim().split("\n");
+    const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    assert.deepEqual(
+      records.map((record) => record.stage),
+      ["order_recovered", "order_reconcile_skipped"]
+    );
+    assert.doesNotMatch(lines.join("\n"), /sk-proj-secret|sk-secret/);
+  } finally {
+    await rm(tempDir, { force: true, recursive: true });
+  }
+});

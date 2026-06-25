@@ -14,6 +14,7 @@
     "croo:requester-smoke": "node --import tsx scripts/croo-requester-smoke.ts",
     "croo:a2a-workbench-smoke": "node --import tsx scripts/croo-a2a-workbench-smoke.ts",
     "croo:evidence-report": "node --import tsx scripts/croo-evidence-report.ts",
+    "croo:orders-health": "node --import tsx scripts/croo-orders-health.ts",
     "license:create": "node --import tsx scripts/license-admin.ts create",
     "license:list": "node --import tsx scripts/license-admin.ts list",
     "license:revoke": "node --import tsx scripts/license-admin.ts revoke",

@@ -1,11 +1,12 @@
 import "dotenv/config";
 
 import { AgentClient, DeliverableType, EventType } from "@croo-network/sdk";
+import type { Delivery, Order } from "@croo-network/sdk/dist/types.js";
 import { buildCapabilities, buildDelivery, buildLicenseDelivery, formatLicenseDeliveryText, type CrooCapabilityId, type CrooOrder } from "./delivery.js";
 import { appendCrooOrderEvidence, evidenceForDelivery, evidenceForOrder } from "./evidence.js";
 import { redactSecrets, redactUnknown as redactUnknownValue } from "../core/redact.js";
 import { runCrooResearchAgent } from "../core/run-research.js";
-import type { AgentTargetUse, ResearchDepth, ResearchMode, ResponseLanguage } from "../core/types.js";
+import type { AgentTargetUse, ResearchDepth, ResearchInput, ResearchMode, ResearchOutput, ResponseLanguage } from "../core/types.js";
 import type { OnchainScope } from "../core/onchain/types.js";
 import { LicenseStore } from "../license/store.js";
 
@@ -20,6 +21,29 @@ type NegotiationAcceptor = {
   acceptNegotiation: (negotiationId: string) => Promise<unknown>;
   acceptNegotiationWithFundAddress: (negotiationId: string, providerFundAddress: string) => Promise<unknown>;
 };
+
+type PaidOrderClient = {
+  deliverOrder: AgentClient["deliverOrder"];
+  getDelivery: AgentClient["getDelivery"];
+  getNegotiation: AgentClient["getNegotiation"];
+  getOrder: AgentClient["getOrder"];
+};
+
+type ActiveOrderClient = PaidOrderClient & {
+  listOrders: AgentClient["listOrders"];
+};
+
+type PaidOrderProcessorOptions = {
+  evidenceRecorder?: typeof recordCrooOrderEvidence;
+  processingOrderIds?: Set<string>;
+  researchRunner?: (input: ResearchInput) => Promise<ResearchOutput>;
+};
+
+const ACTIVE_PROVIDER_ORDER_STATUSES = ["paid", "delivering", "evaluating"] as const;
+const TERMINAL_ORDER_STATUSES = new Set(["completed", "rejected", "expired"]);
+const DELIVERY_PRESENT_STATUSES = new Set(["submitted", "accepted"]);
+const DEFAULT_RECONCILE_INTERVAL_MS = 60000;
+const DEFAULT_RECONCILE_PAGE_SIZE = 50;
 
 export async function startCrooProvider(): Promise<void> {
   const mode = process.env.LANGCLAW_PROVIDER_MODE ?? "live";
@@ -41,7 +65,17 @@ export async function startCrooProvider(): Promise<void> {
   const stream = await client.connectWebSocket();
   const negotiationInputs = new Map<string, CrooOrder>();
   const licenseStore = new LicenseStore();
+  const processingOrderIds = new Set<string>();
   await reconcilePendingNegotiations(client, negotiationInputs);
+  await reconcileActiveProviderOrders(client, negotiationInputs, licenseStore, {
+    processingOrderIds,
+  });
+  const reconcileTimer = setInterval(() => {
+    void reconcileActiveProviderOrders(client, negotiationInputs, licenseStore, {
+      processingOrderIds,
+    });
+  }, readReconcileIntervalMs());
+  reconcileTimer.unref?.();
 
   stream.on(EventType.NegotiationCreated, async (event) => {
     if (!event.negotiation_id) {
@@ -54,59 +88,13 @@ export async function startCrooProvider(): Promise<void> {
     if (!event.order_id) {
       return;
     }
-    let chainOrder: Awaited<ReturnType<typeof client.getOrder>> | undefined;
-    let order: CrooOrder | undefined;
-    try {
-      chainOrder = await client.getOrder(event.order_id);
-      const stored = negotiationInputs.get(chainOrder.negotiationId);
-      order = stored ?? normalizeOrder(await client.getNegotiation(chainOrder.negotiationId));
-      order.id = chainOrder.orderId;
-      await recordCrooOrderEvidence(
-        evidenceForOrder("order_paid", order, {
-          negotiationId: chainOrder.negotiationId,
-          orderId: chainOrder.orderId,
-        })
-      );
-      if (isLicenseOrder(order)) {
-        const delivery = buildLicenseDelivery(order.id, createLicenseForOrder(licenseStore, order));
-        await client.deliverOrder(chainOrder.orderId, {
-          deliverableType: DeliverableType.Text,
-          deliverableText: formatLicenseDeliveryText(delivery),
-        });
-        await recordCrooOrderEvidence(
-          evidenceForOrder("order_delivered", order, {
-            negotiationId: chainOrder.negotiationId,
-            orderId: chainOrder.orderId,
-          })
-        );
-        return;
-      }
-      const delivery = buildDelivery(order, await runCrooResearchAgent(order.input));
-      await client.deliverOrder(chainOrder.orderId, {
-        deliverableType: DeliverableType.Schema,
-        deliverableSchema: JSON.stringify(delivery),
-      });
-      await recordCrooOrderEvidence(
-        evidenceForDelivery(order, delivery, {
-          negotiationId: chainOrder.negotiationId,
-          orderId: chainOrder.orderId,
-        })
-      );
-    } catch (error) {
-      if (order) {
-        await recordCrooOrderEvidence(
-          evidenceForOrder("order_failed", order, {
-            negotiationId: chainOrder?.negotiationId,
-            orderId: chainOrder?.orderId ?? event.order_id,
-            error: errorMessage(error),
-          })
-        );
-      }
-      console.error("Failed to process paid CROO order.", errorMessage(error));
-    }
+    await processPaidOrder(client, negotiationInputs, licenseStore, event.order_id, {
+      processingOrderIds,
+    });
   });
 
   process.on("SIGINT", () => {
+    clearInterval(reconcileTimer);
     stream.close();
     process.exit(0);
   });
@@ -124,7 +112,135 @@ async function reconcilePendingNegotiations(client: AgentClient, negotiationInpu
       await processNegotiation(client, negotiationInputs, negotiation.negotiationId);
     }
   } catch (error) {
-    console.error("Failed to reconcile pending CROO negotiations.", errorMessage(error));
+    console.error("Failed to reconcile pending CROO negotiations.", safeErrorMessage(error));
+  }
+}
+
+export async function reconcileActiveProviderOrders(
+  client: ActiveOrderClient,
+  negotiationInputs: Map<string, CrooOrder>,
+  licenseStore: LicenseStore,
+  options: PaidOrderProcessorOptions = {}
+): Promise<void> {
+  for (const status of ACTIVE_PROVIDER_ORDER_STATUSES) {
+    let orders: Order[];
+    try {
+      orders = await client.listOrders({
+        role: "provider",
+        status,
+        page: 1,
+        pageSize: DEFAULT_RECONCILE_PAGE_SIZE,
+      });
+    } catch (error) {
+      console.error(`Failed to reconcile CROO ${status} orders.`, safeErrorMessage(error));
+      continue;
+    }
+
+    for (const order of orders) {
+      await processPaidOrder(client, negotiationInputs, licenseStore, order.orderId, options);
+    }
+  }
+}
+
+export async function processPaidOrder(
+  client: PaidOrderClient,
+  negotiationInputs: Map<string, CrooOrder>,
+  licenseStore: LicenseStore,
+  orderId: string,
+  options: PaidOrderProcessorOptions = {}
+): Promise<void> {
+  const processingOrderIds = options.processingOrderIds;
+  const evidenceRecorder = options.evidenceRecorder ?? recordCrooOrderEvidence;
+  const researchRunner = options.researchRunner ?? runCrooResearchAgent;
+  if (processingOrderIds?.has(orderId)) {
+    return;
+  }
+  processingOrderIds?.add(orderId);
+
+  let chainOrder: Order | undefined;
+  let order: CrooOrder | undefined;
+  try {
+    chainOrder = await client.getOrder(orderId);
+    const status = normalizeStatus(chainOrder.status);
+    const stored = negotiationInputs.get(chainOrder.negotiationId);
+    order = stored ?? normalizeOrder(await client.getNegotiation(chainOrder.negotiationId));
+    order.id = chainOrder.orderId;
+
+    if (TERMINAL_ORDER_STATUSES.has(status)) {
+      await evidenceRecorder(
+        evidenceForOrder("order_reconcile_skipped", order, {
+          negotiationId: chainOrder.negotiationId,
+          orderId: chainOrder.orderId,
+          error: `terminal_status:${status}`,
+        })
+      );
+      return;
+    }
+
+    if (status === "delivering" || status === "evaluating") {
+      const existingDelivery = await getExistingDelivery(client, chainOrder.orderId);
+      if (existingDelivery && DELIVERY_PRESENT_STATUSES.has(normalizeStatus(existingDelivery.status))) {
+        await evidenceRecorder(
+          evidenceForOrder("order_recovered", order, {
+            negotiationId: chainOrder.negotiationId,
+            orderId: chainOrder.orderId,
+            deliveryHash: existingDelivery.contentHash || undefined,
+          })
+        );
+        return;
+      }
+    }
+
+    await evidenceRecorder(
+      evidenceForOrder("order_paid", order, {
+        negotiationId: chainOrder.negotiationId,
+        orderId: chainOrder.orderId,
+      })
+    );
+
+    if (isLicenseOrder(order)) {
+      const delivery = buildLicenseDelivery(order.id, createLicenseForOrder(licenseStore, order));
+      await client.deliverOrder(chainOrder.orderId, {
+        deliverableType: DeliverableType.Text,
+        deliverableText: formatLicenseDeliveryText(delivery),
+      });
+      await evidenceRecorder(
+        evidenceForOrder("order_delivered", order, {
+          negotiationId: chainOrder.negotiationId,
+          orderId: chainOrder.orderId,
+        })
+      );
+      return;
+    }
+
+    const delivery = buildDelivery(order, await researchRunner(order.input));
+    await client.deliverOrder(chainOrder.orderId, {
+      deliverableType: DeliverableType.Schema,
+      deliverableSchema: JSON.stringify(delivery),
+    });
+    await evidenceRecorder(
+      evidenceForDelivery(order, delivery, {
+        negotiationId: chainOrder.negotiationId,
+        orderId: chainOrder.orderId,
+      })
+    );
+  } catch (error) {
+    if (order) {
+      const recovered = await recoverExistingDelivery(client, order, chainOrder, evidenceRecorder);
+      if (recovered) {
+        return;
+      }
+      await evidenceRecorder(
+          evidenceForOrder("order_failed", order, {
+            negotiationId: chainOrder?.negotiationId,
+            orderId: chainOrder?.orderId ?? orderId,
+            error: safeErrorMessage(error),
+          })
+        );
+      }
+    console.error("Failed to process paid CROO order.", safeErrorMessage(error));
+  } finally {
+    processingOrderIds?.delete(orderId);
   }
 }
 
@@ -153,13 +269,13 @@ async function processNegotiation(client: AgentClient, negotiationInputs: Map<st
   } catch (error) {
     if (order) {
       await recordCrooOrderEvidence(
-        evidenceForOrder("order_failed", order, {
-          negotiationId,
-          error: errorMessage(error),
-        })
-      );
-    }
-    console.error("Failed to process CROO negotiation.", errorMessage(error));
+          evidenceForOrder("order_failed", order, {
+            negotiationId,
+            error: safeErrorMessage(error),
+          })
+        );
+      }
+    console.error("Failed to process CROO negotiation.", safeErrorMessage(error));
   }
 }
 
@@ -169,6 +285,50 @@ async function recordCrooOrderEvidence(evidence: Parameters<typeof appendCrooOrd
   } catch (error) {
     console.warn("Failed to write CROO order evidence.", error instanceof Error ? error.message : error);
   }
+}
+
+async function recoverExistingDelivery(
+  client: PaidOrderClient,
+  order: CrooOrder,
+  chainOrder: Order | undefined,
+  evidenceRecorder: typeof recordCrooOrderEvidence
+): Promise<boolean> {
+  if (!chainOrder) {
+    return false;
+  }
+  const delivery = await getExistingDelivery(client, chainOrder.orderId);
+  if (!delivery || !DELIVERY_PRESENT_STATUSES.has(normalizeStatus(delivery.status))) {
+    return false;
+  }
+  await evidenceRecorder(
+    evidenceForOrder("order_recovered", order, {
+      negotiationId: chainOrder.negotiationId,
+      orderId: chainOrder.orderId,
+      deliveryHash: delivery.contentHash || undefined,
+    })
+  );
+  return true;
+}
+
+async function getExistingDelivery(client: PaidOrderClient, orderId: string): Promise<Delivery | undefined> {
+  try {
+    return await client.getDelivery(orderId);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeStatus(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function readReconcileIntervalMs(): number {
+  const raw = process.env.LANGCLAW_CROO_RECONCILE_INTERVAL_MS?.trim();
+  if (!raw) {
+    return DEFAULT_RECONCILE_INTERVAL_MS;
+  }
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_RECONCILE_INTERVAL_MS;
 }
 
 function assertLiveEnv(): void {
@@ -207,6 +367,10 @@ function redactSecret(value: string): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function safeErrorMessage(error: unknown): string {
+  return redactSecrets(errorMessage(error));
 }
 
 export function normalizeOrder(rawOrder: unknown): CrooOrder {
