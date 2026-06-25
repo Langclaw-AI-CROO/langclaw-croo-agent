@@ -2,8 +2,10 @@ import "dotenv/config";
 
 import { AgentClient, DeliverableType, EventType } from "@croo-network/sdk";
 import { buildCapabilities, buildDelivery, buildLicenseDelivery, formatLicenseDeliveryText, type CrooCapabilityId, type CrooOrder } from "./delivery.js";
+import { appendCrooOrderEvidence, evidenceForDelivery, evidenceForOrder } from "./evidence.js";
+import { redactSecrets, redactUnknown as redactUnknownValue } from "../core/redact.js";
 import { runCrooResearchAgent } from "../core/run-research.js";
-import type { ResearchDepth, ResearchMode, ResponseLanguage } from "../core/types.js";
+import type { AgentTargetUse, ResearchDepth, ResearchMode, ResponseLanguage } from "../core/types.js";
 import type { OnchainScope } from "../core/onchain/types.js";
 import { LicenseStore } from "../license/store.js";
 
@@ -39,43 +41,134 @@ export async function startCrooProvider(): Promise<void> {
   const stream = await client.connectWebSocket();
   const negotiationInputs = new Map<string, CrooOrder>();
   const licenseStore = new LicenseStore();
+  await reconcilePendingNegotiations(client, negotiationInputs);
 
   stream.on(EventType.NegotiationCreated, async (event) => {
     if (!event.negotiation_id) {
       return;
     }
-    const negotiation = await client.getNegotiation(event.negotiation_id);
-    negotiationInputs.set(event.negotiation_id, normalizeOrder(negotiation));
-    await acceptNegotiationForSettlement(client, event.negotiation_id, negotiation);
+    await processNegotiation(client, negotiationInputs, event.negotiation_id);
   });
 
   stream.on(EventType.OrderPaid, async (event) => {
     if (!event.order_id) {
       return;
     }
-    const chainOrder = await client.getOrder(event.order_id);
-    const stored = negotiationInputs.get(chainOrder.negotiationId);
-    const order = stored ?? normalizeOrder(await client.getNegotiation(chainOrder.negotiationId));
-    order.id = chainOrder.orderId;
-    if (isLicenseOrder(order)) {
-      const delivery = buildLicenseDelivery(order.id, createLicenseForOrder(licenseStore, order));
+    let chainOrder: Awaited<ReturnType<typeof client.getOrder>> | undefined;
+    let order: CrooOrder | undefined;
+    try {
+      chainOrder = await client.getOrder(event.order_id);
+      const stored = negotiationInputs.get(chainOrder.negotiationId);
+      order = stored ?? normalizeOrder(await client.getNegotiation(chainOrder.negotiationId));
+      order.id = chainOrder.orderId;
+      await recordCrooOrderEvidence(
+        evidenceForOrder("order_paid", order, {
+          negotiationId: chainOrder.negotiationId,
+          orderId: chainOrder.orderId,
+        })
+      );
+      if (isLicenseOrder(order)) {
+        const delivery = buildLicenseDelivery(order.id, createLicenseForOrder(licenseStore, order));
+        await client.deliverOrder(chainOrder.orderId, {
+          deliverableType: DeliverableType.Text,
+          deliverableText: formatLicenseDeliveryText(delivery),
+        });
+        await recordCrooOrderEvidence(
+          evidenceForOrder("order_delivered", order, {
+            negotiationId: chainOrder.negotiationId,
+            orderId: chainOrder.orderId,
+          })
+        );
+        return;
+      }
+      const delivery = buildDelivery(order, await runCrooResearchAgent(order.input));
       await client.deliverOrder(chainOrder.orderId, {
-        deliverableType: DeliverableType.Text,
-        deliverableText: formatLicenseDeliveryText(delivery),
+        deliverableType: DeliverableType.Schema,
+        deliverableSchema: JSON.stringify(delivery),
       });
-      return;
+      await recordCrooOrderEvidence(
+        evidenceForDelivery(order, delivery, {
+          negotiationId: chainOrder.negotiationId,
+          orderId: chainOrder.orderId,
+        })
+      );
+    } catch (error) {
+      if (order) {
+        await recordCrooOrderEvidence(
+          evidenceForOrder("order_failed", order, {
+            negotiationId: chainOrder?.negotiationId,
+            orderId: chainOrder?.orderId ?? event.order_id,
+            error: errorMessage(error),
+          })
+        );
+      }
+      console.error("Failed to process paid CROO order.", errorMessage(error));
     }
-    const delivery = buildDelivery(order, await runCrooResearchAgent(order.input));
-    await client.deliverOrder(chainOrder.orderId, {
-      deliverableType: DeliverableType.Text,
-      deliverableText: JSON.stringify(delivery),
-    });
   });
 
   process.on("SIGINT", () => {
     stream.close();
     process.exit(0);
   });
+}
+
+async function reconcilePendingNegotiations(client: AgentClient, negotiationInputs: Map<string, CrooOrder>): Promise<void> {
+  try {
+    const negotiations = await client.listNegotiations({
+      role: "provider",
+      status: "pending",
+      page: 1,
+      pageSize: 50,
+    });
+    for (const negotiation of negotiations) {
+      await processNegotiation(client, negotiationInputs, negotiation.negotiationId);
+    }
+  } catch (error) {
+    console.error("Failed to reconcile pending CROO negotiations.", errorMessage(error));
+  }
+}
+
+async function processNegotiation(client: AgentClient, negotiationInputs: Map<string, CrooOrder>, negotiationId: string): Promise<void> {
+  let order: CrooOrder | undefined;
+  try {
+    const negotiation = await client.getNegotiation(negotiationId);
+    if (negotiation.status && negotiation.status !== "pending") {
+      return;
+    }
+    order = normalizeOrder(negotiation);
+    negotiationInputs.set(negotiationId, order);
+    await recordCrooOrderEvidence(
+      evidenceForOrder("negotiation_created", order, {
+        negotiationId,
+        settlementMode: isFundTransferNegotiation(negotiation) ? "fund-transfer" : "escrow",
+      })
+    );
+    await acceptNegotiationForSettlement(client, negotiationId, negotiation);
+    await recordCrooOrderEvidence(
+      evidenceForOrder("negotiation_accepted", order, {
+        negotiationId,
+        settlementMode: isFundTransferNegotiation(negotiation) ? "fund-transfer" : "escrow",
+      })
+    );
+  } catch (error) {
+    if (order) {
+      await recordCrooOrderEvidence(
+        evidenceForOrder("order_failed", order, {
+          negotiationId,
+          error: errorMessage(error),
+        })
+      );
+    }
+    console.error("Failed to process CROO negotiation.", errorMessage(error));
+  }
+}
+
+async function recordCrooOrderEvidence(evidence: Parameters<typeof appendCrooOrderEvidence>[0]): Promise<void> {
+  try {
+    await appendCrooOrderEvidence(evidence);
+  } catch (error) {
+    console.warn("Failed to write CROO order evidence.", error instanceof Error ? error.message : error);
+  }
 }
 
 function assertLiveEnv(): void {
@@ -105,17 +198,15 @@ function createRedactingLogger() {
 }
 
 function redactUnknown(value: unknown): unknown {
-  if (typeof value === "string") {
-    return redactSecret(value);
-  }
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-  return JSON.parse(redactSecret(JSON.stringify(value))) as unknown;
+  return redactUnknownValue(value);
 }
 
 function redactSecret(value: string): string {
-  return value.replace(/croo_sk_[A-Za-z0-9]+/g, "croo_sk_[redacted]");
+  return redactSecrets(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function normalizeOrder(rawOrder: unknown): CrooOrder {
@@ -149,6 +240,7 @@ export function normalizeOrder(rawOrder: unknown): CrooOrder {
       contractAddress: readString((input as UnknownRecord).contractAddress),
       transactionHash: readString((input as UnknownRecord).transactionHash),
       timeframe: readString((input as UnknownRecord).timeframe),
+      targetUse: readTargetUse((input as UnknownRecord).targetUse),
     },
   };
 }
@@ -166,7 +258,18 @@ export async function acceptNegotiationForSettlement(
 }
 
 function isFundTransferNegotiation(negotiation: CrooNegotiation): boolean {
-  return Boolean(negotiation.fundAmount || negotiation.fundToken);
+  return hasPositiveBaseUnitAmount(negotiation.fundAmount);
+}
+
+function hasPositiveBaseUnitAmount(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const trimmed = value.trim();
+  if (!/^[0-9]+$/.test(trimmed)) {
+    return false;
+  }
+  return BigInt(trimmed) > 0n;
 }
 
 function readProviderFundAddress(): string {
@@ -191,6 +294,9 @@ function capabilityIdForServiceId(serviceId: string | undefined): CrooCapability
   if (serviceId === licenseServiceId()) {
     return "langclaw.builder.pass.license";
   }
+  if (serviceId === onchainServiceId()) {
+    return "langclaw.onchain.intelligence";
+  }
   return undefined;
 }
 
@@ -200,6 +306,10 @@ function isLicenseOrder(order: CrooOrder): boolean {
 
 function licenseServiceId(): string {
   return process.env.LANGCLAW_LICENSE_SERVICE_ID?.trim() || "70b7b5d4-961b-47ba-97c6-a863b1c949c0";
+}
+
+function onchainServiceId(): string | undefined {
+  return process.env.LANGCLAW_ONCHAIN_SERVICE_ID?.trim() || undefined;
 }
 
 function parseRequirements(value: unknown): UnknownRecord | undefined {
@@ -255,6 +365,19 @@ function readResponseLanguage(value: unknown): ResponseLanguage | undefined {
 
 function readResearchDepth(value: unknown): ResearchDepth | undefined {
   return isOneOf(value, ["quick", "standard", "deep"]);
+}
+
+function readTargetUse(value: unknown): AgentTargetUse | undefined {
+  return isOneOf(value, [
+    "agent-context",
+    "campaign-grounding",
+    "market-brief",
+    "token-due-diligence",
+    "wallet-analysis",
+    "protocol-research",
+    "claim-verification",
+    "hackathon-research",
+  ]);
 }
 
 function isOneOf<const T extends readonly string[]>(

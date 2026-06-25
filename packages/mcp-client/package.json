@@ -1,6 +1,6 @@
 {
   "name": "@langclaw/mcp-client",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Stdio MCP proxy for the hosted Langclaw CROO Agent.",
   "bin": {

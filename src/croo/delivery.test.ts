@@ -46,6 +46,172 @@ test("buildDelivery maps research output to CROO delivery payload", () => {
   assert.equal(delivery.orderId, "order-1");
   assert.equal(delivery.capabilityId, "langclaw.research.brief");
   assert.equal(delivery.proof.deliveryHash, "abc");
+  assert.equal(delivery.proof.inputHash, "def");
+});
+
+test("buildDelivery maps onchain output to reusable intelligence packet", () => {
+  const result: ResearchOutput = {
+    title: "Base signals",
+    summary: "Base shows useful ecosystem signals.",
+    recommendation: "Use this as agent context.",
+    confidence: "medium",
+    sources: [
+      {
+        id: "source-1",
+        title: "Source",
+        url: "https://example.test/source",
+        provider: "onchain",
+        excerpt: "Evidence",
+      },
+    ],
+    providerTrace: [],
+    markdown: "# Base signals",
+    deliveryProof: {
+      deliveryHash: "hash-1",
+      generatedAt: "2026-06-25T00:00:00.000Z",
+      inputHash: "input-hash-1",
+      sourceCount: 1,
+      executionLog: [],
+    },
+    onchain: {
+      title: "Base signals",
+      answer: "Base shows useful ecosystem signals.",
+      bullets: ["Stablecoin activity is a useful demand signal."],
+      recommendation: "Use this as agent context.",
+      caveat: "Recheck time-sensitive data.",
+      generatedAt: "2026-06-25T00:00:00.000Z",
+      confidence: "medium",
+      riskFlags: [
+        {
+          level: "watch",
+          label: "Router noise",
+          detail: "Filter routing spikes before treating activity as demand.",
+        },
+      ],
+      plan: {
+        intent: {
+          originalQuery: "Base ecosystem signals",
+          rewrittenQuery: "Base ecosystem signals",
+          scope: "chain",
+          entities: [],
+          metrics: ["stablecoins"],
+          timeframe: "7d",
+          chain: {
+            aliases: ["base"],
+            dexscreenerId: "base",
+            geckoterminalId: "base",
+            id: "base",
+            name: "Base",
+            nativeSymbol: "ETH",
+          },
+          confidence: 0.8,
+          debug: {
+            selectedScope: "chain",
+            scopeReason: "test",
+            extractedAddresses: [],
+            preservationCheck: "preserved",
+          },
+        },
+        selectedRoute: "chain",
+        commands: [],
+        fallbackPolicy: [],
+        blockedFallbacks: [],
+        providerGaps: [],
+        debug: {
+          commandCount: 0,
+          rejectedCommands: [],
+          finalStatus: "planned",
+        },
+      },
+      tools: [
+        {
+          commandId: "defillama.stablecoins",
+          title: "Stablecoins",
+          provider: "defillama",
+          status: "success",
+          latencyMs: 10,
+          summary: "Stablecoin supply checked.",
+          sourceUrl: "https://example.test/source",
+        },
+      ],
+      providerTrace: [],
+      sourceUrls: ["https://example.test/source"],
+      markdown: "# Base signals",
+      semantic: {
+        summary: "Semantic summary for requester agents.",
+        keyFindings: [
+          {
+            finding: "Semantic finding.",
+            confidence: "high",
+            whyItMatters: "It improves agent reuse.",
+            evidenceIds: ["source-1"],
+          },
+        ],
+        signals: [
+          {
+            name: "Semantic signal",
+            category: "market",
+            strength: "high",
+            description: "Semantic signal description.",
+          },
+        ],
+        risks: [
+          {
+            risk: "Semantic risk",
+            severity: "medium",
+            mitigation: "Review sources.",
+          },
+        ],
+        opportunities: [
+          {
+            opportunity: "Semantic opportunity",
+            targetUse: "market-brief",
+          },
+        ],
+        agentReuse: {
+          recommendedUses: ["agent-context", "market-brief"],
+          contentAngles: ["Semantic angle"],
+          decisionInputs: ["Semantic decision input"],
+        },
+        limitations: ["Semantic limitation."],
+      },
+    },
+  };
+
+  const delivery = buildDelivery(
+    {
+      id: "order-onchain-1",
+      capabilityId: "langclaw.onchain.intelligence",
+      input: {
+        topic: "Base ecosystem signals",
+        chain: "base",
+        scope: "chain",
+        timeframe: "7d",
+        targetUse: "agent-context",
+        responseLanguage: "en",
+      },
+    },
+    result
+  );
+
+  assert.equal(delivery.orderId, "order-onchain-1");
+  assert.equal(delivery.capabilityId, "langclaw.onchain.intelligence");
+  assert.equal(delivery.status, "delivered");
+  assert.equal(delivery.proof.deliveryHash, "hash-1");
+  assert.equal(delivery.proof.inputHash, "input-hash-1");
+  assert.equal("type" in delivery ? delivery.type : "", "langclaw-onchain-intelligence");
+  if ("type" in delivery) {
+    assert.equal(delivery.version, "1.0");
+    assert.equal(delivery.summary, "Semantic summary for requester agents.");
+    assert.equal(delivery.keyFindings[0]?.finding, "Semantic finding.");
+    assert.equal(delivery.signals[0]?.name, "Semantic signal");
+    assert.equal(delivery.risks[0]?.risk, "Semantic risk");
+    assert.equal(delivery.request.targetUse, "agent-context");
+    assert.ok(delivery.agentReuse.recommendedUses.includes("market-brief"));
+    assert.equal(delivery.sources[0]?.url, "https://example.test/source");
+    assert.deepEqual(delivery.onchainContext.metrics, ["stablecoins"]);
+    assert.doesNotMatch(JSON.stringify(delivery), /reasoningMode|reasoningProvider|reasoningModel|gpt-|OpenAI/);
+  }
 });
 
 test("buildLicenseDelivery returns install command and license metadata", () => {

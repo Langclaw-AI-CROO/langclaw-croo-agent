@@ -11,6 +11,8 @@
     "mcp": "node --import tsx src/mcp/server.ts",
     "server": "node --import tsx src/server/http.ts",
     "croo:provider": "node --import tsx src/croo/provider.ts",
+    "croo:requester-smoke": "node --import tsx scripts/croo-requester-smoke.ts",
+    "croo:evidence-report": "node --import tsx scripts/croo-evidence-report.ts",
     "license:create": "node --import tsx scripts/license-admin.ts create",
     "license:list": "node --import tsx scripts/license-admin.ts list",
     "license:revoke": "node --import tsx scripts/license-admin.ts revoke",
@@ -18,12 +20,14 @@
     "smoke:croo-live": "node --import tsx scripts/smoke-croo-live.ts",
     "validate:package": "node --import tsx scripts/validate-package.ts",
     "scan:cleanup": "node --import tsx scripts/scan-clean.ts cleanup",
-    "scan:dash": "node --import tsx scripts/scan-clean.ts dash"
+    "scan:dash": "node --import tsx scripts/scan-clean.ts dash",
+    "scan:secrets": "node --import tsx scripts/scan-clean.ts secrets"
   },
   "dependencies": {
     "@croo-network/sdk": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.18.0",
     "dotenv": "^17.4.2",
+    "openai": "^6.45.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

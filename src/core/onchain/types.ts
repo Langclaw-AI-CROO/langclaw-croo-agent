@@ -32,6 +32,7 @@ export type OnchainInput = {
   query: string;
   chain?: string;
   scope?: OnchainScope;
+  toolHints?: OnchainCommandId[];
   tokenAddress?: string;
   walletAddress?: string;
   contractAddress?: string;
@@ -165,4 +166,36 @@ export type OnchainOutput = {
   }>;
   sourceUrls: string[];
   markdown: string;
+  semantic?: OnchainSemanticResult;
+};
+
+export type OnchainSemanticResult = {
+  summary: string;
+  keyFindings: Array<{
+    finding: string;
+    confidence: "high" | "medium" | "low";
+    whyItMatters: string;
+    evidenceIds: string[];
+  }>;
+  signals: Array<{
+    name: string;
+    category: string;
+    strength: "high" | "medium" | "low";
+    description: string;
+  }>;
+  risks: Array<{
+    risk: string;
+    severity: "high" | "medium" | "low";
+    mitigation: string;
+  }>;
+  opportunities: Array<{
+    opportunity: string;
+    targetUse: import("../types.js").AgentTargetUse;
+  }>;
+  agentReuse: {
+    recommendedUses: import("../types.js").AgentTargetUse[];
+    contentAngles: string[];
+    decisionInputs: string[];
+  };
+  limitations: string[];
 };

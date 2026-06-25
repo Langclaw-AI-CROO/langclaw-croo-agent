@@ -3,6 +3,7 @@ import { runOnchainIntelligence } from "./onchain/workflow.js";
 import { collectSources, createDefaultProviders } from "./providers.js";
 import type { OnchainCommandId } from "./onchain/types.js";
 import type { ProviderExecutor } from "./onchain/providers.js";
+import type { OnchainReasoner } from "./onchain/reasoning.js";
 import type {
   Confidence,
   DeliveryProof,
@@ -18,6 +19,7 @@ export async function runCrooResearchAgent(
   input: ResearchInput,
   deps: {
     onchainExecutors?: Partial<Record<OnchainCommandId, ProviderExecutor>>;
+    onchainReasoner?: OnchainReasoner | false;
     providers?: ResearchProvider[];
     now?: () => Date;
   } = {}
@@ -36,7 +38,7 @@ export async function runCrooResearchAgent(
       transactionHash: normalized.transactionHash || undefined,
       timeframe: normalized.timeframe || undefined,
       responseLanguage: normalized.responseLanguage,
-    }, { executors: deps.onchainExecutors });
+    }, { executors: deps.onchainExecutors, reasoner: deps.onchainReasoner });
     const sources = onchain.sourceUrls.map((url, index) => ({
       id: `onchain-source-${index + 1}`,
       title: `Onchain source ${index + 1}`,
@@ -50,7 +52,12 @@ export async function runCrooResearchAgent(
       message: entry.message,
       sourceCount: entry.sourceUrl ? 1 : 0,
     }));
-    const deliveryProof = buildDeliveryProof(normalized, sources, providerTrace, now());
+    const deliveryProof = buildDeliveryProof(normalized, sources, providerTrace, now(), {
+      answer: onchain.answer,
+      bullets: onchain.bullets,
+      risks: onchain.riskFlags,
+      semantic: onchain.semantic,
+    });
 
     return {
       title: onchain.title,
@@ -115,6 +122,7 @@ export function normalizeInput(input: ResearchInput): Required<ResearchInput> {
     contractAddress: input.contractAddress?.trim() ?? "",
     transactionHash: input.transactionHash?.trim() ?? "",
     timeframe: input.timeframe?.trim() ?? "",
+    targetUse: input.targetUse ?? "agent-context",
   };
 }
 
@@ -211,7 +219,8 @@ function buildDeliveryProof(
   input: Required<ResearchInput>,
   sources: SourceCard[],
   providerTrace: ProviderTraceEntry[],
-  now: Date
+  now: Date,
+  resultFingerprint?: unknown
 ): DeliveryProof {
   const generatedAt = now.toISOString();
   const inputHash = stableHash(input);
@@ -223,6 +232,7 @@ function buildDeliveryProof(
       url: source.url,
       provider: source.provider,
     })),
+    resultFingerprint,
   });
 
   return {

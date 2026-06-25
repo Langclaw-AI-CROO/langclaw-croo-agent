@@ -21,7 +21,7 @@ export function planOnchainTools(intent: OnchainIntent, input: OnchainInput): On
 
   const rejectedCommands: string[] = [];
   const providerGaps: string[] = [];
-  const candidates = orderCandidates(getCommandsByScope(intent.scope), intent);
+  const candidates = prioritizeToolHints(orderCandidates(getCommandsByScope(intent.scope), intent), input.toolHints);
   const selected: OnchainCommand[] = [];
 
   for (const command of candidates) {
@@ -126,6 +126,31 @@ function orderCandidates(commands: OnchainCommand[], intent: OnchainIntent): Onc
       return 1;
     }
     return 0;
+  });
+}
+
+function prioritizeToolHints(commands: OnchainCommand[], toolHints: OnchainInput["toolHints"]): OnchainCommand[] {
+  if (!toolHints?.length) {
+    return commands;
+  }
+  const allowed = new Set(commands.map((command) => command.id));
+  const safeHints = toolHints.filter((hint) => allowed.has(hint));
+  if (!safeHints.length) {
+    return commands;
+  }
+  return [...commands].sort((left, right) => {
+    const leftIndex = safeHints.indexOf(left.id);
+    const rightIndex = safeHints.indexOf(right.id);
+    if (leftIndex === -1 && rightIndex === -1) {
+      return 0;
+    }
+    if (leftIndex === -1) {
+      return 1;
+    }
+    if (rightIndex === -1) {
+      return -1;
+    }
+    return leftIndex - rightIndex;
   });
 }
 

@@ -33,10 +33,17 @@ const legacyTerms = [
 ];
 
 const dashTerms = [String.fromCharCode(0x2014), String.fromCharCode(0x2013)];
-const terms = mode === "cleanup" ? legacyTerms : mode === "dash" ? dashTerms : [];
+const secretTerms = [
+  /sk-proj-[A-Za-z0-9_-]+/,
+  /sk-[A-Za-z0-9_-]{20,}/,
+  /croo_sk_(?!\[redacted\]|\*{4})[A-Za-z0-9]+/,
+  /lc_live_(?!\[redacted\]|xxx\b|test\b)[A-Za-z0-9_-]+/,
+  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+];
+const terms: Array<string | RegExp> = mode === "cleanup" ? legacyTerms : mode === "dash" ? dashTerms : mode === "secrets" ? secretTerms : [];
 
 if (!terms.length) {
-  console.error("Usage: scan-clean.ts cleanup|dash");
+  console.error("Usage: scan-clean.ts cleanup|dash|secrets");
   process.exit(2);
 }
 
@@ -70,12 +77,15 @@ function scanPath(target: string): void {
   if (!stat.isFile()) {
     return;
   }
+  if (mode === "secrets" && /\.test\.ts$/.test(target)) {
+    return;
+  }
 
   const text = fs.readFileSync(target, "utf8");
   const lines = text.split(/\n/);
   lines.forEach((line, index) => {
     for (const term of terms) {
-      if (line.includes(term)) {
+      if (typeof term === "string" ? line.includes(term) : term.test(line)) {
         matches.push(`${path.relative(process.cwd(), target)}:${index + 1}: matched restricted term`);
       }
     }

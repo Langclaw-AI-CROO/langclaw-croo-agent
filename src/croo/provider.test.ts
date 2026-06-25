@@ -15,6 +15,38 @@ test("normalizeOrder maps CROO license service id to license capability", () => 
   assert.equal(order.capabilityId, "langclaw.builder.pass.license");
 });
 
+test("normalizeOrder maps configured onchain service id to onchain capability", () => {
+  const previous = process.env.LANGCLAW_ONCHAIN_SERVICE_ID;
+  process.env.LANGCLAW_ONCHAIN_SERVICE_ID = "svc-onchain";
+
+  try {
+    const order = normalizeOrder({
+      orderId: "order-onchain-service",
+      serviceId: "svc-onchain",
+      requirements: JSON.stringify({
+        query: "Find current Base ecosystem signals useful for another agent workflow.",
+        chain: "base",
+        scope: "chain",
+        timeframe: "7d",
+        targetUse: "agent-context",
+        responseLanguage: "en",
+      }),
+    });
+
+    assert.equal(order.id, "order-onchain-service");
+    assert.equal(order.serviceId, "svc-onchain");
+    assert.equal(order.capabilityId, "langclaw.onchain.intelligence");
+    assert.equal(order.input.mode, "onchain-intelligence");
+    assert.equal(order.input.targetUse, "agent-context");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.LANGCLAW_ONCHAIN_SERVICE_ID;
+    } else {
+      process.env.LANGCLAW_ONCHAIN_SERVICE_ID = previous;
+    }
+  }
+});
+
 test("acceptNegotiationForSettlement uses regular accept for non-fund services", async () => {
   const calls: string[] = [];
   const client = {
@@ -29,6 +61,25 @@ test("acceptNegotiationForSettlement uses regular accept for non-fund services",
   await acceptNegotiationForSettlement(client, "neg-1", {});
 
   assert.deepEqual(calls, ["accept:neg-1"]);
+});
+
+test("acceptNegotiationForSettlement treats zero fund amount as non-fund", async () => {
+  const calls: string[] = [];
+  const client = {
+    acceptNegotiation: async (negotiationId: string) => {
+      calls.push(`accept:${negotiationId}`);
+    },
+    acceptNegotiationWithFundAddress: async (negotiationId: string, address: string) => {
+      calls.push(`fund:${negotiationId}:${address}`);
+    },
+  };
+
+  await acceptNegotiationForSettlement(client, "neg-zero", {
+    fundAmount: "0",
+    fundToken: "0x0000000000000000000000000000000000000000",
+  });
+
+  assert.deepEqual(calls, ["accept:neg-zero"]);
 });
 
 test("acceptNegotiationForSettlement uses provider fund address for fund-transfer services", async () => {

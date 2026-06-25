@@ -9,6 +9,16 @@ export type ResponseLanguage = "en" | "id";
 
 export type ResearchDepth = "quick" | "standard" | "deep";
 
+export type AgentTargetUse =
+  | "agent-context"
+  | "campaign-grounding"
+  | "market-brief"
+  | "token-due-diligence"
+  | "wallet-analysis"
+  | "protocol-research"
+  | "claim-verification"
+  | "hackathon-research";
+
 export type ResearchInput = {
   topic: string;
   mode?: ResearchMode;
@@ -22,6 +32,7 @@ export type ResearchInput = {
   contractAddress?: string;
   transactionHash?: string;
   timeframe?: string;
+  targetUse?: AgentTargetUse;
 };
 
 export type SourceCard = {

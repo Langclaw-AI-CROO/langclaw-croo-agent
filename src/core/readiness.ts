@@ -21,6 +21,8 @@ export function getReadiness(): { ready: boolean; checks: ReadinessCheck[] } {
     optional("GOPLUS_API_KEY", "GoPlus risk checks can run."),
     optional("DUNE_API_KEY", "Dune saved-query and dynamic SQL analytics can run."),
     optional("DUNE_DEFAULT_QUERY_ID", "Dune default saved query is configured."),
+    optional("OPENAI_API_KEY", "Onchain semantic reasoning can run when LANGCLAW_ONCHAIN_REASONING_ENABLED=true."),
+    optional("LANGCLAW_ONCHAIN_REASONING_ENABLED", "Onchain semantic reasoning flag is configured."),
   ];
 
   return {
