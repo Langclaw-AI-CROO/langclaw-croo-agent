@@ -1,0 +1,26 @@
+{
+  "name": "langclaw-croo-agent",
+  "version": "0.1.0",
+  "description": "Use Langclaw CROO Agent research and onchain intelligence tools from Codex.",
+  "author": {
+    "name": "Langclaw"
+  },
+  "license": "MIT",
+  "keywords": ["croo", "mcp", "agent", "research"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Langclaw CROO Agent",
+    "shortDescription": "Paid research and onchain tools for CROO and MCP workflows.",
+    "longDescription": "Run source-backed research, read-only onchain intelligence, claim checks, builder reviews, and readiness checks through the hosted Langclaw CROO Agent MCP server.",
+    "developerName": "Langclaw",
+    "category": "Productivity",
+    "capabilities": ["Research", "MCP", "Agent"],
+    "brandColor": "#2563EB",
+    "defaultPrompt": [
+      "/langclaw-research CROO agent market fit",
+      "/langclaw-onchain Base smart money last 7 days",
+      "/langclaw-builder-review Review this repo for CROO"
+    ]
+  }
+}

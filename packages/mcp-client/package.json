@@ -1,0 +1,31 @@
+{
+  "name": "@langclaw/mcp-client",
+  "version": "0.1.4",
+  "type": "module",
+  "description": "Stdio MCP proxy for the hosted Langclaw CROO Agent.",
+  "bin": {
+    "langclaw-mcp-client": "dist/cli.js"
+  },
+  "files": [
+    "assets",
+    "dist/cli.js",
+    "dist/config.js",
+    "dist/installer.js",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.0"
+  }
+}

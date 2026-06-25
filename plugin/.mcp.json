@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "langclaw-croo-agent": {
+      "command": "npm",
+      "args": ["--prefix", "..", "run", "mcp"]
+    }
+  }
+}

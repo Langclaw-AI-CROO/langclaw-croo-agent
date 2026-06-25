@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "langclaw": {
+      "command": "npx",
+      "args": [
+        "@langclaw/mcp-client",
+        "--url",
+        "http://167.99.66.196/mcp",
+        "--token",
+        "USER_ACCESS_TOKEN"
+      ]
+    }
+  }
+}
