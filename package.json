@@ -1,0 +1,34 @@
+{
+  "name": "langclaw-croo-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Paid callable research agent for CROO CAP and MCP clients.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p packages/mcp-client/tsconfig.json",
+    "typecheck": "tsc --noEmit && tsc -p packages/mcp-client/tsconfig.json --noEmit",
+    "test": "node --import tsx scripts/run-tests.ts",
+    "mcp": "node --import tsx src/mcp/server.ts",
+    "server": "node --import tsx src/server/http.ts",
+    "croo:provider": "node --import tsx src/croo/provider.ts",
+    "license:create": "node --import tsx scripts/license-admin.ts create",
+    "license:list": "node --import tsx scripts/license-admin.ts list",
+    "license:revoke": "node --import tsx scripts/license-admin.ts revoke",
+    "smoke:readiness": "node --import tsx scripts/smoke-readiness.ts",
+    "smoke:croo-live": "node --import tsx scripts/smoke-croo-live.ts",
+    "validate:package": "node --import tsx scripts/validate-package.ts",
+    "scan:cleanup": "node --import tsx scripts/scan-clean.ts cleanup",
+    "scan:dash": "node --import tsx scripts/scan-clean.ts dash"
+  },
+  "dependencies": {
+    "@croo-network/sdk": "^0.2.0",
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "dotenv": "^17.4.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.0"
+  }
+}
