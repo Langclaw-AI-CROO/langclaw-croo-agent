@@ -88,34 +88,59 @@ Explain the available tools:
 Use a prompt such as:
 
 ```text
-Run smart money accumulation on Base last 7 days.
+Find current Base ecosystem signals useful for another agent workflow.
 ```
 
 Explain that broad research prompts auto-route to onchain when they mention wallets, contracts, TVL, liquidity, token holders, transactions, bridges, governance, or chain activity.
 
-## 6. Show CROO Delivery
+Explain that `Langclaw Onchain Intelligence` can use semantic planning for the buyer query, then Langclaw validates the plan and runs only read-only onchain tools. The public service copy does not mention the underlying model provider.
+
+Show the CROO service setup:
+
+```text
+Service Name: Langclaw Onchain Intelligence
+Price: 0.10 USDC
+SLA: 15 minutes
+Deliverable: Schema
+Requirements: Schema
+```
+
+## 6. Show Live CROO Delivery
 
 Run:
 
 ```bash
-LANGCLAW_PROVIDER_MODE=mock npm run croo:provider
+npm run croo:provider
 ```
 
-Show:
-
-- capability id
-- result summary
-- provider trace
-- delivery hash
-- source count
-
-Then show the license service:
+In a second terminal, run:
 
 ```bash
+npm run croo:requester-smoke
+npm run croo:evidence-report
+```
+
+Show `docs/CROO_LIVE_EVIDENCE.md`:
+
+- service ID for `Langclaw Onchain Intelligence`
+- negotiation ID
+- order ID
+- order paid stage
+- order delivered stage
+- delivery hash
+- source count
+- requester agent or wallet evidence
+
+Do not show API keys, model details, private keys, license tokens, or raw evidence logs in the recording.
+
+Use mock mode only as a local fallback when live CROO credentials or funded requester balance are not available:
+
+```bash
+LANGCLAW_PROVIDER_MODE=mock npm run croo:provider
 LANGCLAW_PROVIDER_MODE=mock LANGCLAW_MOCK_CAPABILITY=langclaw.builder.pass.license npm run croo:provider
 ```
 
-Show the 30-day license, install command, and included tools. Redact the license token in the recording.
+Show the 30-day license, install command, and included tools only after the live order evidence. Redact the license token in the recording.
 
 ## 7. Close
 

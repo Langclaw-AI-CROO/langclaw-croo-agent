@@ -19,10 +19,14 @@
 ```json
 {
   "id": "order-onchain-1",
+  "serviceName": "Langclaw Onchain Intelligence",
   "capabilityId": "langclaw.onchain.intelligence",
   "input": {
-    "query": "smart money accumulation on Base last 7 days",
+    "query": "Find current Base ecosystem signals useful for another agent workflow.",
     "chain": "base",
+    "scope": "chain",
+    "timeframe": "7d",
+    "targetUse": "agent-context",
     "responseLanguage": "en"
   }
 }
@@ -114,11 +118,67 @@ The human-readable CROO delivery starts with install commands and includes:
 
 ```json
 {
+  "type": "langclaw-onchain-intelligence",
+  "version": "1.0",
   "orderId": "order-onchain-1",
   "capabilityId": "langclaw.onchain.intelligence",
   "status": "delivered",
+  "summary": "Source-backed intelligence summary.",
+  "keyFindings": [
+    {
+      "finding": "Semantic finding based on source-backed onchain evidence.",
+      "confidence": "medium",
+      "whyItMatters": "Another agent can reuse this as market or due diligence context.",
+      "evidenceIds": ["onchain-source-1"]
+    }
+  ],
+  "signals": [
+    {
+      "name": "Source-backed market signal",
+      "category": "chain",
+      "strength": "medium",
+      "description": "Signal derived from validated onchain provider summaries."
+    }
+  ],
+  "risks": [
+    {
+      "risk": "Partial evidence",
+      "severity": "low",
+      "mitigation": "Recheck source data before time-sensitive use."
+    }
+  ],
+  "opportunities": [
+    {
+      "opportunity": "Reuse this packet as agent workflow context.",
+      "targetUse": "agent-context"
+    }
+  ],
+  "agentReuse": {
+    "recommendedUses": [
+      "agent-context",
+      "campaign-grounding",
+      "market-brief",
+      "token-due-diligence",
+      "wallet-analysis",
+      "protocol-research"
+    ],
+    "contentAngles": [],
+    "decisionInputs": []
+  },
+  "sources": [],
+  "onchainContext": {
+    "chain": "base",
+    "addresses": [],
+    "transactionHashes": [],
+    "metrics": []
+  },
+  "limitations": [
+    "This brief is read-only intelligence and does not execute trades or transactions.",
+    "Signals should be rechecked if used for time-sensitive decisions."
+  ],
   "proof": {
     "deliveryHash": "sha256-hash",
+    "inputHash": "sha256-hash",
     "generatedAt": "iso-date",
     "sourceCount": 5
   }

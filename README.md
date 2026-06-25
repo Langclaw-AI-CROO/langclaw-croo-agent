@@ -4,11 +4,12 @@ Langclaw CROO Agent is a paid callable research agent for CROO CAP and MCP-compa
 
 It turns a research request into a concise report with sources, confidence, provider trace, and delivery proof. The same core agent runs behind a CROO provider, a hosted MCP server, a local MCP server, and a Codex plugin.
 
-Langclaw does not require a model API key. Codex, Claude Code CLI, Cursor, Windsurf, or another MCP client provides the reasoning layer. Langclaw provides tools, data routes, provider output, and delivery proof.
+Langclaw can run without a model API key for non-onchain services. `Langclaw Onchain Intelligence` can optionally use a semantic reasoning layer on the operator VPS, then validate and run Langclaw's read-only onchain tools before returning delivery proof.
 
 ## What It Does
 
 - Accepts paid research orders through CROO CAP.
+- Exposes `Langclaw Onchain Intelligence` as a 0.10 USDC schema service for requester agents.
 - Exposes MCP tools for Codex, Claude Code CLI, Cursor, Windsurf, and other MCP clients.
 - Ships a Codex plugin with a small skill that tells an agent when to call Langclaw.
 - Produces source-backed research, onchain intelligence, claim checks, builder submission reviews, and readiness checks.
@@ -106,6 +107,17 @@ End users can also use Langclaw without installing anything:
 4. Use the returned license token with Codex, Claude Code CLI, Cursor, Windsurf, or another MCP client.
 5. Order `langclaw.research.brief` or `langclaw.onchain.intelligence` for direct CROO delivery.
 
+Recommended CROO dashboard service:
+
+```text
+Service Name: Langclaw Onchain Intelligence
+Description: Source-backed onchain intelligence for agents that need read-only chain, token, wallet, contract, protocol, and market context. Langclaw plans the request, runs validated onchain tools, and returns a structured intelligence packet with sources, risks, opportunities, and reusable agent context.
+Price: 0.10 USDC
+SLA: 15 minutes
+Deliverable: Schema
+Requirements: Schema
+```
+
 ## VPS Operator Setup
 
 ```bash
@@ -123,12 +135,16 @@ Store provider keys only on the VPS:
 - `GOPLUS_API_KEY`
 - `GOPLUS_API_SECRET`
 - `DUNE_API_KEY`
+- `OPENAI_API_KEY`
 - `CROO_API_KEY`
+- `CROO_TARGET_SERVICE_ID`
+- `LANGCLAW_ONCHAIN_SERVICE_ID`
 - `LANGCLAW_ACCESS_TOKENS`
 - `LANGCLAW_ADMIN_ACCESS_TOKENS`
 - `LANGCLAW_LICENSE_STORE_PATH`
 - `LANGCLAW_LICENSE_DEFAULT_DAYS`
 - `LANGCLAW_LICENSE_DEFAULT_CALLS`
+- `LANGCLAW_CROO_EVIDENCE_LOG_PATH`
 
 Start the hosted MCP server:
 
@@ -203,13 +219,19 @@ Required live settings:
 - `CROO_SDK_KEY` or `CROO_API_KEY`
 - `LANGCLAW_PROVIDER_FUND_ADDRESS` for CROO fund-transfer services
 - `LANGCLAW_AGENT_PRICE_USDC`
+- `LANGCLAW_ONCHAIN_SERVICE_ID` for the CROO dashboard service ID of `Langclaw Onchain Intelligence`
 - `LANGCLAW_ACCESS_TOKENS` for hosted MCP access control
 - `LANGCLAW_ADMIN_ACCESS_TOKENS` for hosted MCP admin fallback access
 - `LANGCLAW_LICENSE_STORE_PATH` for paid license token storage
+- `LANGCLAW_CROO_EVIDENCE_LOG_PATH` for CAP order evidence logs
 
 `CROO_API_KEY` is the name shown by the CROO dashboard. `CROO_SDK_KEY` is also supported for compatibility with SDK docs. Do not export a private key from your main browser wallet for this repo. CROO shows the agent account wallet in its dashboard. Fund that agent account when CROO requires balance for paid actions.
 
 `LANGCLAW_PROVIDER_FUND_ADDRESS` must be a Base mainnet EVM address such as `0x...`. The provider only uses it when a CROO negotiation includes fund-transfer fields. Non-fund services keep the normal CROO escrow flow.
+
+The provider appends safe CAP lifecycle evidence to `LANGCLAW_CROO_EVIDENCE_LOG_PATH`. Each JSONL row records the stage, negotiation ID, order ID, capability, input hash, settlement mode, delivery hash, and source count when available. It does not store raw buyer prompts, API keys, or license tokens.
+
+For A2A smoke tests, set `CROO_TARGET_SERVICE_ID` to the same service ID as `LANGCLAW_ONCHAIN_SERVICE_ID`. Requester agents should send `langclaw.onchain.intelligence` requirements with `query`, `chain`, `scope`, `timeframe`, `targetUse`, and `responseLanguage`.
 
 ## License Tokens
 
@@ -243,6 +265,16 @@ Optional onchain settings:
 - `GOPLUS_API_SECRET`
 - `DUNE_API_KEY`
 - `DUNE_DEFAULT_QUERY_ID`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `LANGCLAW_ONCHAIN_REASONING_ENABLED`
+- `LANGCLAW_ONCHAIN_REASONING_EFFORT`
+- `LANGCLAW_ONCHAIN_REASONING_REQUIRED`
+- `LANGCLAW_ONCHAIN_REASONING_MAX_INPUT_CHARS`
+- `LANGCLAW_ONCHAIN_REASONING_MAX_OUTPUT_TOKENS`
+- `LANGCLAW_ONCHAIN_REASONING_MAX_RETRIES`
+
+Onchain semantic reasoning is scoped only to `Langclaw Onchain Intelligence`. It receives the buyer `query` and safe provider summaries, not raw provider payloads, env dumps, API keys, private keys, license tokens, or full evidence logs. Keep `LANGCLAW_ONCHAIN_REASONING_REQUIRED=false` for demo fallback unless you want paid onchain orders to fail when the semantic layer is unavailable.
 
 Use `LANGCLAW_PROVIDER_MODE=mock` to run a local dry run without opening a live provider connection.
 
@@ -251,6 +283,17 @@ Check live credential readiness:
 ```bash
 npm run smoke:croo-live
 ```
+
+Run a live requester smoke order from a separate CROO requester agent:
+
+```bash
+npm run croo:requester-smoke
+npm run croo:evidence-report
+```
+
+The requester smoke uses the requester agent's own CROO key. It reads `CROO_REQUESTER_SDK_KEY` first for shared local `.env` files, then falls back to the official `CROO_SDK_KEY` name from the CROO docs. Do not share the Langclaw provider key with buyers or external requester agents.
+
+The requester smoke writes a redacted summary to `data/croo-requester-smoke.json`. The report command turns provider and requester evidence into `docs/CROO_LIVE_EVIDENCE.md` for demo and submission review.
 
 ## Development
 
