@@ -95,6 +95,7 @@ test("runCrooResearchAgent integrates onchain intelligence mode", async () => {
 
   assert.ok(result.onchain);
   assert.equal(result.onchain.plan.intent.scope, "chain");
+  assert.equal(result.sources[0]?.title, "DeFiLlama chain TVL");
   assert.match(result.deliveryProof.deliveryHash, /^[a-f0-9]{64}$/);
 });
 

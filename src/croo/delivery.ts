@@ -1,4 +1,5 @@
 import type { AgentTargetUse, ResearchInput, ResearchOutput } from "../core/types.js";
+import type { SmartMoneyFlow, SmartMoneyInsight } from "../core/onchain/types.js";
 import type { CreateLicenseResult } from "../license/types.js";
 
 export type CrooCapabilityId = "langclaw.research.brief" | "langclaw.onchain.intelligence" | "langclaw.builder.pass.license";
@@ -86,6 +87,7 @@ export type OnchainIntelligenceDelivery = {
     transactionHashes: string[];
     metrics: string[];
   };
+  smartMoney?: SmartMoneyInsight;
   limitations: string[];
   proof: {
     deliveryHash: string;
@@ -262,6 +264,7 @@ function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutp
   const sourceIds = result.sources.map((source) => source.id);
   const bullets = onchain?.bullets.length ? onchain.bullets : [result.summary];
   const semantic = onchain?.semantic;
+  const smartMoney = onchain?.smartMoney;
   const targetUse = order.input.targetUse ?? "agent-context";
   const entities = onchain?.plan.intent.entities ?? [];
   const inputAddresses = [order.input.tokenAddress, order.input.walletAddress, order.input.contractAddress].filter(Boolean) as string[];
@@ -272,7 +275,8 @@ function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutp
   const addresses = [
     ...entities.filter((entity) => entity.type !== "transaction").map((entity) => entity.value),
     ...inputAddresses,
-  ];
+  ].filter(isEvmAddress);
+  const smartMoneyFields = smartMoney ? buildSmartMoneyDeliveryFields(smartMoney, targetUse) : undefined;
 
   return {
     type: "langclaw-onchain-intelligence",
@@ -289,29 +293,29 @@ function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutp
       targetUse,
       responseLanguage: order.input.responseLanguage,
     },
-    summary: semantic?.summary ?? result.summary,
-    keyFindings: semantic?.keyFindings ?? bullets.slice(0, 5).map((finding, index) => ({
+    summary: smartMoneyFields?.summary ?? semantic?.summary ?? result.summary,
+    keyFindings: smartMoneyFields?.keyFindings ?? semantic?.keyFindings ?? bullets.slice(0, 5).map((finding, index) => ({
       finding,
       confidence: result.confidence,
       whyItMatters: result.recommendation,
       evidenceIds: sourceIds.length ? sourceIds : [`source-${index + 1}`],
     })),
-    signals: semantic?.signals ?? (onchain?.tools ?? []).filter((tool) => tool.status === "success").slice(0, 8).map((tool) => ({
+    signals: smartMoneyFields?.signals ?? semantic?.signals ?? (onchain?.tools ?? []).filter((tool) => tool.status === "success").slice(0, 8).map((tool) => ({
       name: tool.title,
       category: tool.provider,
       strength: result.confidence,
       description: tool.summary,
     })),
-    risks: semantic?.risks ?? (onchain?.riskFlags ?? []).map((risk) => ({
+    risks: smartMoneyFields?.risks ?? semantic?.risks ?? (onchain?.riskFlags ?? []).map((risk) => ({
       risk: risk.label,
       severity: risk.level === "high" ? "high" : risk.level === "watch" ? "medium" : "low",
       mitigation: risk.detail,
     })),
-    opportunities: semantic?.opportunities ?? bullets.slice(0, 3).map((opportunity) => ({
+    opportunities: smartMoneyFields?.opportunities ?? semantic?.opportunities ?? bullets.slice(0, 3).map((opportunity) => ({
       opportunity,
       targetUse,
     })),
-    agentReuse: semantic?.agentReuse ?? {
+    agentReuse: smartMoneyFields?.agentReuse ?? semantic?.agentReuse ?? {
       recommendedUses: [
         "agent-context",
         "campaign-grounding",
@@ -336,6 +340,7 @@ function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutp
       transactionHashes: dedupe(transactionHashes),
       metrics: onchain?.plan.intent.metrics ?? [],
     },
+    smartMoney,
     limitations: semantic?.limitations ?? [
       "This brief is read-only intelligence and does not execute trades or transactions.",
       "Signals should be rechecked if used for time-sensitive decisions.",
@@ -346,6 +351,134 @@ function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutp
       generatedAt: result.deliveryProof.generatedAt,
       sourceCount: result.deliveryProof.sourceCount,
     },
+  };
+}
+
+function buildSmartMoneyDeliveryFields(smartMoney: SmartMoneyInsight, targetUse: AgentTargetUse): Pick<
+  OnchainIntelligenceDelivery,
+  "agentReuse" | "keyFindings" | "opportunities" | "risks" | "signals" | "summary"
+> {
+  if (smartMoney.dataQuality.status !== "ok") {
+    const unavailable = smartMoney.dataQuality.status === "unavailable";
+    return {
+      summary: unavailable
+        ? `Dune smart-money route was unavailable on ${smartMoney.chain}; no source rows could be delivered.`
+        : `Dune smart-money route ran on ${smartMoney.chain}, but no rows matched the configured filters.`,
+      keyFindings: [
+        {
+          finding: unavailable ? "Dune smart-money provider was unavailable." : "No qualifying smart-money rows returned.",
+          confidence: "medium",
+          whyItMatters: unavailable
+            ? "Agents should not treat this as a market signal because the primary flow provider failed."
+            : "Agents should treat this as an absence of evidence for the configured filters, not proof that no activity exists.",
+          evidenceIds: ["onchain-source-1"],
+        },
+      ],
+      signals: [
+        {
+          name: unavailable ? "Dune unavailable" : "No rows returned",
+          category: "dune",
+          strength: "medium",
+          description: unavailable
+            ? `Route ${smartMoney.dataQuality.route ?? "dune.sql_execute"} did not return usable flow data.`
+            : `Route ${smartMoney.dataQuality.route ?? "dune.sql_execute"} returned 0 normalized rows.`,
+        },
+      ],
+      risks: [
+        {
+          risk: unavailable ? "Provider unavailable" : "No qualifying rows",
+          severity: unavailable ? "high" : "medium",
+          mitigation: unavailable
+            ? "Retry after provider rate limits clear or use a cached Dune execution result."
+            : "Retry with a lower minUsd, wider timeframe, or a token-specific prompt.",
+        },
+        readOnlyRisk(),
+      ],
+      opportunities: [
+        {
+          opportunity: "Tune the Dune filter and rerun the scan.",
+          targetUse,
+        },
+      ],
+      agentReuse: {
+        recommendedUses: [targetUse, "market-brief", "protocol-research"],
+        contentAngles: ["No qualifying smart-money rows", "Base Dune filter tuning"],
+        decisionInputs: smartMoney.dataQuality.notes,
+      },
+    };
+  }
+
+  const totalUsd = smartMoney.sourceRows.reduce((sum, row) => sum + row.netUsd, 0);
+  const topFlow = smartMoney.sourceRows[0];
+  const tokenNames = smartMoney.accumulatedTokens.map((token) => token.tokenSymbol).slice(0, 5);
+  return {
+    summary: `Found ${smartMoney.sourceRows.length} Base smart-money accumulation row(s), ${smartMoney.topWallets.length} wallet(s), ${smartMoney.accumulatedTokens.length} token(s), and ${formatUsd(totalUsd)} visible net buy flow.`,
+    keyFindings: [
+      {
+        finding: `${smartMoney.sourceRows.length} Dune dex.trades accumulation row(s) matched the scan.`,
+        confidence: "high",
+        whyItMatters: "Requester agents can reuse these rows as concrete wallet-token evidence.",
+        evidenceIds: smartMoney.sourceRows.slice(0, 3).map((row) => row.evidenceId),
+      },
+      {
+        finding: tokenNames.length ? `Top accumulated token symbols include ${tokenNames.join(", ")}.` : "No token symbols were available.",
+        confidence: "medium",
+        whyItMatters: "Token grouping gives another agent an immediate prioritization set.",
+        evidenceIds: smartMoney.sourceRows.slice(0, 3).map((row) => row.evidenceId),
+      },
+      {
+        finding: topFlow ? `Largest visible row is ${formatUsd(topFlow.netUsd)} by ${shortAddress(topFlow.wallet)} into ${topFlow.tokenSymbol}.` : "No largest flow row was available.",
+        confidence: "medium",
+        whyItMatters: "The top row gives a concrete review target.",
+        evidenceIds: topFlow ? [topFlow.evidenceId] : ["onchain-source-1"],
+      },
+    ],
+    signals: smartMoney.sourceRows.slice(0, 5).map((row) => ({
+      name: `${row.tokenSymbol} accumulation`,
+      category: "dune.dex.trades",
+      strength: "high" as const,
+      description: `${shortAddress(row.wallet)} bought ${formatUsd(row.netUsd)} across ${row.trades} trade(s) in ${row.window || smartMoney.timeframe || "the selected window"}.`,
+    })),
+    risks: [
+      {
+        risk: "No wallet labels",
+        severity: "medium",
+        mitigation: "Treat wallets as raw addresses until label providers confirm identity.",
+      },
+      {
+        risk: "Dune row limit",
+        severity: "low",
+        mitigation: `Delivery is capped to ${smartMoney.sourceRows.length} normalized row(s); open the Dune result for the full set.`,
+      },
+      readOnlyRisk(),
+    ],
+    opportunities: [
+      {
+        opportunity: "Use top wallets for follow-up wallet analysis.",
+        targetUse: "wallet-analysis",
+      },
+      {
+        opportunity: "Use accumulated tokens as market-brief candidates.",
+        targetUse: "market-brief",
+      },
+      {
+        opportunity: "Use row evidence as agent workflow context.",
+        targetUse,
+      },
+    ],
+    agentReuse: {
+      recommendedUses: ["agent-context", "market-brief", "wallet-analysis", "token-due-diligence", "protocol-research"],
+      contentAngles: smartMoney.sourceRows.slice(0, 5).map((row) => `${row.tokenSymbol} ${formatUsd(row.netUsd)} by ${shortAddress(row.wallet)}`),
+      decisionInputs: smartMoney.sourceRows.slice(0, 6).map((row) => `${row.evidenceId}: ${row.wallet} -> ${row.tokenSymbol} ${formatUsd(row.netUsd)} (${row.trades} trades)`),
+    },
+  };
+}
+
+function readOnlyRisk(): { risk: string; severity: "low"; mitigation: string } {
+  return {
+    risk: "Read-only analytics",
+    severity: "low",
+    mitigation: "Use this as intelligence only. Langclaw does not execute swaps, approvals, transfers, or custody.",
   };
 }
 
@@ -462,6 +595,18 @@ function capabilityIdForResult(result: ResearchOutput): CrooCapabilityId {
 
 function dedupe(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.trim()))];
+}
+
+function isEvmAddress(value: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function shortAddress(value: string): string {
+  return value.length > 12 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value;
+}
+
+function formatUsd(value: number): string {
+  return `$${Math.round(value).toLocaleString("en-US")}`;
 }
 
 function licenseDurationDays(issuedAt: string, expiresAt: string): number {

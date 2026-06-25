@@ -1,4 +1,4 @@
-import type { ChainConfig, OnchainCommandId } from "./types.js";
+import type { ChainConfig, OnchainCommandId, SmartMoneyFlow } from "./types.js";
 
 export type ProviderRequest = {
   chain: ChainConfig;
@@ -19,6 +19,13 @@ export type ProviderResponse = {
 };
 
 export type ProviderExecutor = (request: ProviderRequest) => Promise<ProviderResponse>;
+
+type DuneFetchResult = {
+  attemptCount: number;
+  data: unknown;
+  fallbackUsed: boolean;
+  key: string;
+};
 
 export const providerExecutors: Record<OnchainCommandId, ProviderExecutor> = {
   "defillama.chain_tvl": getDefiLlamaChains,
@@ -234,8 +241,17 @@ async function getDuneLatestResult(request: ProviderRequest): Promise<ProviderRe
     throw new Error("DUNE_DEFAULT_QUERY_ID is required.");
   }
   const sourceUrl = `https://api.dune.com/api/v1/query/${encodeURIComponent(queryId)}/results`;
-  const data = await fetchJson(sourceUrl, request.signal, { "x-dune-api-key": process.env.DUNE_API_KEY ?? "" });
-  return { data, sourceUrl, summary: "Fetched latest saved analytics result." };
+  const result = await duneFetchUrl(sourceUrl, { signal: request.signal });
+  return {
+    data: result.data,
+    routeDebug: {
+      duneKeyAttemptCount: result.attemptCount,
+      duneKeyFallbackUsed: result.fallbackUsed,
+      executionProvider: "dune-rest",
+    },
+    sourceUrl,
+    summary: "Fetched latest saved analytics result.",
+  };
 }
 
 export function buildDuneSmartMoneySql(request: {
@@ -315,7 +331,8 @@ LIMIT 25`.trim();
 }
 
 async function executeDuneSmartMoneySql(request: ProviderRequest): Promise<ProviderResponse> {
-  if (!process.env.DUNE_API_KEY) {
+  const keys = readDuneApiKeys();
+  if (!keys.length) {
     throw new Error("DUNE_API_KEY is required.");
   }
 
@@ -329,15 +346,19 @@ async function executeDuneSmartMoneySql(request: ProviderRequest): Promise<Provi
     signal: request.signal,
     body: JSON.stringify({ sql: built.sql }),
   });
-  const executionId = readExecutionId(executeResponse);
-  const status = await pollDuneExecution(executionId, request.signal);
+  const executionId = readExecutionId(executeResponse.data);
+  const status = await pollDuneExecution(executionId, request.signal, executeResponse.key);
   const data = await duneFetch(`/execution/${encodeURIComponent(executionId)}/results`, {
     signal: request.signal,
+    preferredKey: executeResponse.key,
   });
+  const keyStats = summarizeDuneKeyStats([executeResponse, status, data]);
 
   return {
-    data,
+    data: data.data,
     routeDebug: {
+      duneKeyAttemptCount: keyStats.attemptCount,
+      duneKeyFallbackUsed: keyStats.fallbackUsed,
       executionId,
       generatedRoute: built.route,
       minUsd: built.minUsd,
@@ -345,7 +366,7 @@ async function executeDuneSmartMoneySql(request: ProviderRequest): Promise<Provi
       tableFamily: built.tableFamily,
       tokenSymbol: built.tokenSymbol || undefined,
       windowDays: built.windowDays,
-      executionCostCredits: readRecord(status).execution_cost_credits,
+      executionCostCredits: readRecord(status.data).execution_cost_credits,
     },
     sourceUrl: `https://api.dune.com/api/v1/execution/${encodeURIComponent(executionId)}/results`,
     summary: `Executed Dune dynamic SQL for ${built.selectedChain} DEX accumulation over ${built.windowDays} day(s) with minimum USD ${built.minUsd}.`,
@@ -369,21 +390,98 @@ async function fetchJson(sourceUrl: string, signal?: AbortSignal, headers: Recor
 
 async function duneFetch(
   path: string,
-  init: { body?: string; method?: string; signal?: AbortSignal } = {}
-): Promise<unknown> {
-  const response = await fetch(`https://api.dune.com/api/v1${path}`, {
-    method: init.method ?? "GET",
-    headers: {
-      "content-type": "application/json",
-      "x-dune-api-key": process.env.DUNE_API_KEY ?? "",
-    },
-    signal: init.signal,
-    body: init.body,
-  });
-  if (!response.ok) {
-    throw new Error(`Dune HTTP ${response.status}`);
+  init: { body?: string; method?: string; preferredKey?: string; signal?: AbortSignal } = {}
+): Promise<DuneFetchResult> {
+  return duneFetchUrl(`https://api.dune.com/api/v1${path}`, init);
+}
+
+async function duneFetchUrl(
+  sourceUrl: string,
+  init: { body?: string; method?: string; preferredKey?: string; signal?: AbortSignal } = {}
+): Promise<DuneFetchResult> {
+  const keys = orderDuneKeys(init.preferredKey);
+  if (!keys.length) {
+    throw new Error("DUNE_API_KEY is required.");
   }
-  return response.json() as Promise<unknown>;
+  const maxAttempts = Math.min(readDuneMaxAttempts(), keys.length);
+  let lastStatus = 0;
+  for (let index = 0; index < maxAttempts; index += 1) {
+    const key = keys[index];
+    const response = await fetch(sourceUrl, {
+      method: init.method ?? "GET",
+      headers: {
+        "content-type": "application/json",
+        "x-dune-api-key": key,
+      },
+      signal: init.signal,
+      body: init.body,
+    });
+    if (response.ok) {
+      return {
+        attemptCount: index + 1,
+        data: await response.json(),
+        fallbackUsed: index > 0,
+        key,
+      };
+    }
+    lastStatus = response.status;
+    if (!shouldRetryDuneStatus(response.status) || index + 1 >= maxAttempts) {
+      throw new Error(`Dune HTTP ${response.status}`);
+    }
+  }
+  throw new Error(`Dune HTTP ${lastStatus || "unknown"}`);
+}
+
+export function readDuneApiKeys(env: NodeJS.ProcessEnv = process.env): string[] {
+  return uniqueStrings([env.DUNE_API_KEY, ...(env.DUNE_API_KEYS?.split(",") ?? [])]);
+}
+
+function orderDuneKeys(preferredKey?: string): string[] {
+  const keys = readDuneApiKeys();
+  if (!preferredKey) {
+    return keys;
+  }
+  return uniqueStrings([preferredKey, ...keys]);
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function shouldRetryDuneStatus(status: number): boolean {
+  return readDuneRetryStatuses().has(status);
+}
+
+function readDuneRetryStatuses(): Set<number> {
+  const raw = process.env.DUNE_API_KEY_RETRY_STATUS ?? "401,403,408,429,500,502,503,504";
+  return new Set(
+    raw
+      .split(",")
+      .map((item) => Number.parseInt(item.trim(), 10))
+      .filter((item) => Number.isInteger(item) && item > 0)
+  );
+}
+
+function readDuneMaxAttempts(): number {
+  const parsed = Number.parseInt(process.env.DUNE_API_KEY_MAX_ATTEMPTS ?? "2", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 2;
+}
+
+function summarizeDuneKeyStats(results: DuneFetchResult[]): { attemptCount: number; fallbackUsed: boolean } {
+  return {
+    attemptCount: results.reduce((sum, result) => sum + result.attemptCount, 0),
+    fallbackUsed: results.some((result) => result.fallbackUsed),
+  };
 }
 
 async function alchemyRpc(request: ProviderRequest, method: string, params: unknown[]): Promise<ProviderResponse> {
@@ -443,6 +541,87 @@ function readDataRows(value: unknown): Array<Record<string, unknown>> {
     return (value as { data: Array<Record<string, unknown>> }).data;
   }
   return [];
+}
+
+export function extractDuneSmartMoneyRows(value: unknown, limit = 10): SmartMoneyFlow[] {
+  return readDuneRows(value)
+    .map(normalizeDuneSmartMoneyRow)
+    .filter((row): row is SmartMoneyFlow => Boolean(row))
+    .slice(0, Math.max(0, limit));
+}
+
+function readDuneRows(value: unknown): Array<Record<string, unknown>> {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record.rows)) {
+    return records(record.rows);
+  }
+  if (Array.isArray(record.data)) {
+    return records(record.data);
+  }
+  if (record.result && typeof record.result === "object") {
+    const result = record.result as Record<string, unknown>;
+    if (Array.isArray(result.rows)) {
+      return records(result.rows);
+    }
+    if (Array.isArray(result.data)) {
+      return records(result.data);
+    }
+  }
+  if (record.data && typeof record.data === "object" && Array.isArray((record.data as { rows?: unknown }).rows)) {
+    return records((record.data as { rows: unknown[] }).rows);
+  }
+  return [];
+}
+
+function normalizeDuneSmartMoneyRow(row: Record<string, unknown>): SmartMoneyFlow | undefined {
+  const wallet = readString(row.wallet ?? row.tx_from ?? row.txFrom);
+  if (!isEvmAddress(wallet)) {
+    return undefined;
+  }
+  const tokenSymbol = readString(row.tokenSymbol ?? row.token_symbol ?? row.token_bought_symbol).toUpperCase() || "UNKNOWN";
+  const tokenAddress = readString(row.tokenAddress ?? row.token_address ?? row.token_bought_address);
+  const netUsd = readNumber(row.netUsd ?? row.net_usd ?? row.amountUsd ?? row.amount_usd);
+  const trades = Math.max(0, Math.round(readNumber(row.trades ?? row.tradeCount ?? row.trade_count)));
+  if (!Number.isFinite(netUsd) || netUsd <= 0) {
+    return undefined;
+  }
+  return {
+    dataSource: readString(row.dataSource ?? row.data_source) || "Dune dex.trades dynamic SQL",
+    evidenceId: "",
+    netUsd,
+    signal: readString(row.signal) || "dex_accumulation_candidate",
+    tokenAddress: isEvmAddress(tokenAddress) ? tokenAddress.toLowerCase() : undefined,
+    tokenSymbol,
+    trades,
+    wallet: wallet.toLowerCase(),
+    window: readString(row.window) || "",
+  };
+}
+
+function records(value: unknown[]): Array<Record<string, unknown>> {
+  return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+}
+
+function readString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readNumber(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.replace(/,/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function isEvmAddress(value: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(value);
 }
 
 function summarizeArray(value: unknown, label: string): string {
@@ -526,12 +705,12 @@ function escapeSqlLiteral(value: string): string {
   return value.replace(/'/g, "''").replace(/[^a-zA-Z0-9_:.+-]/g, "");
 }
 
-async function pollDuneExecution(executionId: string, signal?: AbortSignal): Promise<unknown> {
+async function pollDuneExecution(executionId: string, signal?: AbortSignal, preferredKey?: string): Promise<DuneFetchResult> {
   const intervalMs = Number.parseInt(process.env.DUNE_SQL_POLL_INTERVAL_MS ?? "1000", 10);
   const maxAttempts = Number.parseInt(process.env.DUNE_SQL_POLL_ATTEMPTS ?? "30", 10);
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const status = await duneFetch(`/execution/${encodeURIComponent(executionId)}/status`, { signal });
-    const record = readRecord(status);
+    const status = await duneFetch(`/execution/${encodeURIComponent(executionId)}/status`, { preferredKey, signal });
+    const record = readRecord(status.data);
     if (record.is_execution_finished === true || record.state === "QUERY_STATE_COMPLETED") {
       return status;
     }

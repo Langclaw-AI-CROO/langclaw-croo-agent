@@ -215,6 +215,289 @@ test("buildDelivery maps onchain output to reusable intelligence packet", () => 
   }
 });
 
+test("buildDelivery includes smart-money rows when Dune data is available", () => {
+  const result: ResearchOutput = {
+    title: "Base smart money",
+    summary: "Completed onchain checks.",
+    recommendation: "Use the source rows.",
+    confidence: "high",
+    sources: [
+      {
+        id: "onchain-source-1",
+        title: "Dune dex.trades smart-money result",
+        url: "https://example.test/dune",
+        provider: "onchain",
+        excerpt: "Executed Dune dynamic SQL.",
+      },
+    ],
+    providerTrace: [],
+    markdown: "# Base smart money",
+    deliveryProof: {
+      deliveryHash: "hash-smart-money",
+      generatedAt: "2026-06-25T00:00:00.000Z",
+      inputHash: "input-hash-smart-money",
+      sourceCount: 1,
+      executionLog: [],
+    },
+    onchain: {
+      title: "Base smart money",
+      answer: "Found 2 visible smart-money rows.",
+      bullets: ["Dune found rows."],
+      recommendation: "Use the source rows.",
+      caveat: "Read-only analytics.",
+      generatedAt: "2026-06-25T00:00:00.000Z",
+      confidence: "high",
+      riskFlags: [],
+      plan: {
+        intent: {
+          originalQuery: "smart money on Base",
+          rewrittenQuery: "smart money on Base",
+          scope: "token",
+          entities: [
+            {
+              confidence: 1,
+              type: "chain",
+              value: "Base",
+            },
+          ],
+          metrics: ["smart-money"],
+          timeframe: "7d",
+          chain: {
+            aliases: ["base"],
+            dexscreenerId: "base",
+            geckoterminalId: "base",
+            id: "base",
+            name: "Base",
+            nativeSymbol: "ETH",
+          },
+          confidence: 0.9,
+          debug: {
+            selectedScope: "token",
+            scopeReason: "test",
+            extractedAddresses: [],
+            preservationCheck: "preserved",
+          },
+        },
+        selectedRoute: "token",
+        commands: [],
+        fallbackPolicy: [],
+        blockedFallbacks: [],
+        providerGaps: [],
+        debug: {
+          commandCount: 0,
+          rejectedCommands: [],
+          finalStatus: "planned",
+        },
+      },
+      providerTrace: [],
+      sourceUrls: ["https://example.test/dune"],
+      tools: [],
+      markdown: "# Base smart money",
+      smartMoney: {
+        accumulatedTokens: [
+          {
+            netUsd: 42000,
+            tokenAddress: "0x0000000000000000000000000000000000000001",
+            tokenSymbol: "AERO",
+            tradeCount: 4,
+            walletCount: 2,
+          },
+        ],
+        chain: "base",
+        dataQuality: {
+          chain: "base",
+          minUsd: 10000,
+          notes: ["Rows are normalized from Dune dex.trades output."],
+          returnedRows: 2,
+          route: "dune.sql_execute.dex_accumulation",
+          status: "ok",
+          windowDays: 7,
+        },
+        flows: [
+          {
+            dataSource: "Dune dex.trades dynamic SQL",
+            evidenceId: "smart-money-row-1",
+            netUsd: 25000,
+            signal: "dex_accumulation_candidate",
+            tokenAddress: "0x0000000000000000000000000000000000000001",
+            tokenSymbol: "AERO",
+            trades: 2,
+            wallet: "0x1111111111111111111111111111111111111111",
+            window: "2026-06-18 to 2026-06-25",
+          },
+          {
+            dataSource: "Dune dex.trades dynamic SQL",
+            evidenceId: "smart-money-row-2",
+            netUsd: 17000,
+            signal: "dex_accumulation_candidate",
+            tokenAddress: "0x0000000000000000000000000000000000000001",
+            tokenSymbol: "AERO",
+            trades: 2,
+            wallet: "0x2222222222222222222222222222222222222222",
+            window: "2026-06-18 to 2026-06-25",
+          },
+        ],
+        minUsd: 10000,
+        sourceRows: [
+          {
+            dataSource: "Dune dex.trades dynamic SQL",
+            evidenceId: "smart-money-row-1",
+            netUsd: 25000,
+            signal: "dex_accumulation_candidate",
+            tokenAddress: "0x0000000000000000000000000000000000000001",
+            tokenSymbol: "AERO",
+            trades: 2,
+            wallet: "0x1111111111111111111111111111111111111111",
+            window: "2026-06-18 to 2026-06-25",
+          },
+        ],
+        timeframe: "7d",
+        topWallets: [
+          {
+            netUsd: 25000,
+            tokenCount: 1,
+            tokens: ["AERO"],
+            tradeCount: 2,
+            wallet: "0x1111111111111111111111111111111111111111",
+          },
+        ],
+      },
+    },
+  };
+
+  const delivery = buildDelivery(
+    {
+      id: "order-smart-money-1",
+      capabilityId: "langclaw.onchain.intelligence",
+      input: {
+        topic: "smart money on Base",
+        chain: "base",
+        scope: "chain",
+        timeframe: "7d",
+        targetUse: "agent-context",
+        responseLanguage: "en",
+      },
+    },
+    result
+  );
+
+  assert.equal("type" in delivery ? delivery.type : "", "langclaw-onchain-intelligence");
+  if ("type" in delivery) {
+    assert.equal(delivery.smartMoney?.dataQuality.status, "ok");
+    assert.equal(delivery.smartMoney?.topWallets[0]?.wallet, "0x1111111111111111111111111111111111111111");
+    assert.equal(delivery.smartMoney?.accumulatedTokens[0]?.tokenSymbol, "AERO");
+    assert.match(delivery.summary, /Base smart-money accumulation/);
+    assert.deepEqual(delivery.onchainContext.addresses, []);
+    assert.equal(delivery.sources[0]?.title, "Dune dex.trades smart-money result");
+    assert.ok(delivery.keyFindings[0]?.evidenceIds.includes("smart-money-row-1"));
+    assert.doesNotMatch(JSON.stringify(delivery), /reasoningMode|reasoningProvider|reasoningModel|gpt-|OpenAI|sk-/);
+  }
+});
+
+test("buildDelivery reports no rows for empty smart-money output", () => {
+  const baseResult: ResearchOutput = {
+    title: "Base smart money",
+    summary: "Completed onchain checks.",
+    recommendation: "Tune the filters.",
+    confidence: "medium",
+    sources: [],
+    providerTrace: [],
+    markdown: "# Base smart money",
+    deliveryProof: {
+      deliveryHash: "hash-empty-smart-money",
+      generatedAt: "2026-06-25T00:00:00.000Z",
+      inputHash: "input-hash-empty-smart-money",
+      sourceCount: 0,
+      executionLog: [],
+    },
+    onchain: {
+      title: "Base smart money",
+      answer: "No rows.",
+      bullets: ["No rows."],
+      recommendation: "Tune the filters.",
+      caveat: "No qualifying rows.",
+      generatedAt: "2026-06-25T00:00:00.000Z",
+      confidence: "medium",
+      riskFlags: [],
+      plan: {
+        intent: {
+          originalQuery: "smart money on Base",
+          rewrittenQuery: "smart money on Base",
+          scope: "token",
+          entities: [],
+          metrics: ["smart-money"],
+          timeframe: "7d",
+          chain: {
+            aliases: ["base"],
+            dexscreenerId: "base",
+            geckoterminalId: "base",
+            id: "base",
+            name: "Base",
+            nativeSymbol: "ETH",
+          },
+          confidence: 0.9,
+          debug: {
+            selectedScope: "token",
+            scopeReason: "test",
+            extractedAddresses: [],
+            preservationCheck: "preserved",
+          },
+        },
+        selectedRoute: "token",
+        commands: [],
+        fallbackPolicy: [],
+        blockedFallbacks: [],
+        providerGaps: [],
+        debug: {
+          commandCount: 0,
+          rejectedCommands: [],
+          finalStatus: "planned",
+        },
+      },
+      providerTrace: [],
+      sourceUrls: [],
+      tools: [],
+      markdown: "# Base smart money",
+      smartMoney: {
+        accumulatedTokens: [],
+        chain: "base",
+        dataQuality: {
+          chain: "base",
+          minUsd: 10000,
+          notes: ["Dune execution completed, but no qualifying rows were returned for the selected filters."],
+          returnedRows: 0,
+          route: "dune.sql_execute.dex_accumulation",
+          status: "no_rows_returned",
+          windowDays: 7,
+        },
+        flows: [],
+        minUsd: 10000,
+        sourceRows: [],
+        timeframe: "7d",
+        topWallets: [],
+      },
+    },
+  };
+
+  const delivery = buildDelivery(
+    {
+      id: "order-smart-money-empty",
+      capabilityId: "langclaw.onchain.intelligence",
+      input: {
+        topic: "smart money on Base",
+        chain: "base",
+        scope: "chain",
+      },
+    },
+    baseResult
+  );
+
+  if ("type" in delivery) {
+    assert.equal(delivery.smartMoney?.dataQuality.status, "no_rows_returned");
+    assert.match(delivery.summary, /no rows matched/);
+  }
+});
+
 test("buildLicenseDelivery returns install command and license metadata", () => {
   const delivery = buildLicenseDelivery(
     "order-license-1",

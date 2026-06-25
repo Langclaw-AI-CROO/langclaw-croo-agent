@@ -39,13 +39,16 @@ export async function runCrooResearchAgent(
       timeframe: normalized.timeframe || undefined,
       responseLanguage: normalized.responseLanguage,
     }, { executors: deps.onchainExecutors, reasoner: deps.onchainReasoner });
-    const sources = onchain.sourceUrls.map((url, index) => ({
-      id: `onchain-source-${index + 1}`,
-      title: `Onchain source ${index + 1}`,
-      url,
-      provider: "onchain",
-      excerpt: "Provider source URL used by the onchain intelligence workflow.",
-    }));
+    const sources = onchain.sourceUrls.map((url, index) => {
+      const tool = onchain.tools.find((candidate) => candidate.sourceUrl === url);
+      return {
+        id: `onchain-source-${index + 1}`,
+        title: titleForOnchainSource(tool?.commandId, index),
+        url,
+        provider: "onchain",
+        excerpt: tool?.summary ?? "Provider source URL used by the onchain intelligence workflow.",
+      };
+    });
     const providerTrace = onchain.providerTrace.map((entry) => ({
       provider: entry.provider,
       status: entry.status,
@@ -100,6 +103,26 @@ export async function runCrooResearchAgent(
     deliveryProof,
     markdown,
   };
+}
+
+function titleForOnchainSource(commandId: OnchainCommandId | undefined, index: number): string {
+  const titles: Partial<Record<OnchainCommandId, string>> = {
+    "coingecko.market_context": "CoinGecko market context",
+    "defillama.chain_tvl": "DeFiLlama chain TVL",
+    "defillama.protocol": "DeFiLlama protocol data",
+    "defillama.protocols": "DeFiLlama protocols",
+    "defillama.stablecoins": "DeFiLlama stablecoins",
+    "defillama.yield_pools": "DeFiLlama yield pools",
+    "dexscreener.latest_boosts": "Dexscreener latest boosts",
+    "dexscreener.latest_profiles": "Dexscreener token profiles",
+    "dexscreener.search_pairs": "Dexscreener pair search",
+    "dexscreener.token_pairs": "Dexscreener token pairs",
+    "dexscreener.token_snapshot": "Dexscreener token snapshot",
+    "dexscreener.top_boosts": "Dexscreener top boosts",
+    "dune.latest_result": "Dune saved query result",
+    "dune.sql_execute": "Dune dex.trades smart-money result",
+  };
+  return commandId ? titles[commandId] ?? `Onchain provider source ${index + 1}` : `Onchain provider source ${index + 1}`;
 }
 
 export function normalizeInput(input: ResearchInput): Required<ResearchInput> {

@@ -166,6 +166,14 @@ class OpenAIOnchainReasoner implements OnchainReasoner {
         summary: tool.summary,
         sourceUrl: tool.sourceUrl,
       })),
+      smartMoney: output.smartMoney
+        ? {
+            accumulatedTokens: output.smartMoney.accumulatedTokens.slice(0, 5),
+            dataQuality: output.smartMoney.dataQuality,
+            sourceRows: output.smartMoney.sourceRows.slice(0, 10),
+            topWallets: output.smartMoney.topWallets.slice(0, 5),
+          }
+        : undefined,
       caveat: output.caveat,
       recommendation: output.recommendation,
     };
@@ -202,12 +210,43 @@ class OpenAIOnchainReasoner implements OnchainReasoner {
         },
       } as never)
     );
-    const text = (response as { output_text?: string }).output_text;
+    const text = extractResponseText(response);
     if (!text) {
       throw new OnchainReasoningError("OpenAI response did not include JSON output.");
     }
     return JSON.parse(text) as T;
   }
+}
+
+function extractResponseText(response: unknown): string {
+  const direct = response && typeof response === "object" ? (response as { output_text?: unknown }).output_text : undefined;
+  if (typeof direct === "string" && direct.trim()) {
+    return direct;
+  }
+  const output = response && typeof response === "object" ? (response as { output?: unknown }).output : undefined;
+  if (!Array.isArray(output)) {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const content = (item as { content?: unknown }).content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const part of content) {
+      if (!part || typeof part !== "object") {
+        continue;
+      }
+      const text = (part as { text?: unknown }).text;
+      if (typeof text === "string" && text.trim()) {
+        parts.push(text);
+      }
+    }
+  }
+  return parts.join("\n").trim();
 }
 
 function validateSemanticIntent(plan: SemanticIntentPlan): void {

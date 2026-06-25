@@ -146,6 +146,55 @@ export type RiskFlag = {
   detail: string;
 };
 
+export type SmartMoneyFlow = {
+  dataSource: string;
+  evidenceId: string;
+  netUsd: number;
+  signal: string;
+  tokenAddress?: string;
+  tokenSymbol: string;
+  trades: number;
+  wallet: string;
+  window: string;
+};
+
+export type SmartMoneyWallet = {
+  netUsd: number;
+  tokenCount: number;
+  tokens: string[];
+  tradeCount: number;
+  wallet: string;
+};
+
+export type SmartMoneyToken = {
+  netUsd: number;
+  tokenAddress?: string;
+  tokenSymbol: string;
+  tradeCount: number;
+  walletCount: number;
+};
+
+export type SmartMoneyDataQuality = {
+  chain: string;
+  minUsd?: number;
+  notes: string[];
+  returnedRows: number;
+  route?: string;
+  status: "ok" | "no_rows_returned" | "unavailable";
+  windowDays?: number;
+};
+
+export type SmartMoneyInsight = {
+  accumulatedTokens: SmartMoneyToken[];
+  chain: string;
+  dataQuality: SmartMoneyDataQuality;
+  flows: SmartMoneyFlow[];
+  minUsd?: number;
+  sourceRows: SmartMoneyFlow[];
+  timeframe?: string;
+  topWallets: SmartMoneyWallet[];
+};
+
 export type OnchainOutput = {
   title: string;
   answer: string;
@@ -167,6 +216,7 @@ export type OnchainOutput = {
   sourceUrls: string[];
   markdown: string;
   semantic?: OnchainSemanticResult;
+  smartMoney?: SmartMoneyInsight;
 };
 
 export type OnchainSemanticResult = {

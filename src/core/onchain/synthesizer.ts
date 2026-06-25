@@ -1,4 +1,5 @@
-import type { OnchainOutput, OnchainPlan, OnchainToolResult, RiskFlag } from "./types.js";
+import { extractDuneSmartMoneyRows } from "./providers.js";
+import type { OnchainOutput, OnchainPlan, OnchainToolResult, RiskFlag, SmartMoneyFlow, SmartMoneyInsight, SmartMoneyToken, SmartMoneyWallet } from "./types.js";
 
 export function synthesizeOnchainOutput(plan: OnchainPlan, tools: OnchainToolResult[]): OnchainOutput {
   const successful = tools.filter((tool) => tool.status === "success");
@@ -6,11 +7,14 @@ export function synthesizeOnchainOutput(plan: OnchainPlan, tools: OnchainToolRes
   const sourceUrls = Array.from(new Set(tools.map((tool) => tool.sourceUrl).filter((url): url is string => Boolean(url))));
   const confidence = successful.length >= 3 ? "high" : successful.length >= 1 ? "medium" : "low";
   const title = `${plan.intent.chain.name} ${labelForScope(plan.intent.scope)} Intelligence`;
+  const smartMoney = buildSmartMoneyInsight(plan, tools);
   const bullets = buildBullets(plan, tools);
-  const riskFlags = buildRiskFlags(plan, tools);
+  const riskFlags = buildRiskFlags(plan, tools, smartMoney);
   const caveat = buildCaveat(plan, successful.length, failed.length);
   const recommendation = buildRecommendation(plan, confidence);
-  const answer = successful.length
+  const answer = smartMoney?.dataQuality.status === "ok"
+    ? smartMoneySummary(smartMoney)
+    : successful.length
     ? `Completed ${successful.length} onchain checks for ${plan.intent.originalQuery}.`
     : `No live onchain provider returned usable data for ${plan.intent.originalQuery}.`;
   const generatedAt = new Date().toISOString();
@@ -34,6 +38,7 @@ export function synthesizeOnchainOutput(plan: OnchainPlan, tools: OnchainToolRes
     tools,
     providerTrace,
     sourceUrls,
+    smartMoney,
   };
 
   return {
@@ -59,7 +64,7 @@ function buildBullets(plan: OnchainPlan, tools: OnchainToolResult[]): string[] {
   return bullets;
 }
 
-function buildRiskFlags(plan: OnchainPlan, tools: OnchainToolResult[]): RiskFlag[] {
+function buildRiskFlags(plan: OnchainPlan, tools: OnchainToolResult[], smartMoney?: SmartMoneyInsight): RiskFlag[] {
   const flags: RiskFlag[] = [];
   if (plan.intent.scope === "token" && !tools.some((tool) => tool.commandId.includes("security") && tool.status === "success")) {
     flags.push({
@@ -82,7 +87,146 @@ function buildRiskFlags(plan: OnchainPlan, tools: OnchainToolResult[]): RiskFlag
       detail: "At least one provider failed. Read provider trace before using the result.",
     });
   }
+  if (smartMoney?.dataQuality.status === "ok") {
+    flags.push({
+      level: "watch",
+      label: "No wallet labels",
+      detail: "Wallets are raw addresses from Dune output and should be cross-checked before attribution.",
+    });
+    flags.push({
+      level: "info",
+      label: "Dune row limit",
+      detail: `Delivery shows ${smartMoney.sourceRows.length} normalized row(s), capped for a compact buyer payload.`,
+    });
+  }
   return flags;
+}
+
+function buildSmartMoneyInsight(plan: OnchainPlan, tools: OnchainToolResult[]): SmartMoneyInsight | undefined {
+  const duneTool = tools.find((tool) => tool.commandId === "dune.sql_execute");
+  if (!duneTool) {
+    return undefined;
+  }
+  const routeDebug = duneTool.routeDebug ?? {};
+  const chain = stringValue(routeDebug.selectedChain) || plan.intent.chain.id;
+  if (duneTool.status !== "success") {
+    return {
+      accumulatedTokens: [],
+      chain,
+      dataQuality: {
+        chain,
+        minUsd: numberValue(routeDebug.minUsd) || undefined,
+        notes: [duneTool.error || duneTool.summary || "Dune smart-money provider was unavailable."],
+        returnedRows: 0,
+        route: stringValue(routeDebug.generatedRoute) || "dune.sql_execute",
+        status: "unavailable",
+        windowDays: numberValue(routeDebug.windowDays) || undefined,
+      },
+      flows: [],
+      minUsd: numberValue(routeDebug.minUsd) || undefined,
+      sourceRows: [],
+      timeframe: plan.intent.timeframe,
+      topWallets: [],
+    };
+  }
+  const sourceRows = extractDuneSmartMoneyRows(duneTool.data, 10).map((row, index) => ({
+    ...row,
+    evidenceId: `smart-money-row-${index + 1}`,
+  }));
+  const dataQuality = {
+    chain,
+    minUsd: numberValue(routeDebug.minUsd) || undefined,
+    notes: sourceRows.length
+      ? ["Rows are normalized from Dune dex.trades output.", "Wallet labels are not inferred."]
+      : ["Dune execution completed, but no qualifying rows were returned for the selected filters."],
+    returnedRows: sourceRows.length,
+    route: stringValue(routeDebug.generatedRoute) || undefined,
+    status: sourceRows.length ? "ok" as const : "no_rows_returned" as const,
+    windowDays: numberValue(routeDebug.windowDays) || undefined,
+  };
+  return {
+    accumulatedTokens: aggregateTokens(sourceRows),
+    chain,
+    dataQuality,
+    flows: sourceRows,
+    minUsd: dataQuality.minUsd,
+    sourceRows,
+    timeframe: plan.intent.timeframe,
+    topWallets: aggregateWallets(sourceRows),
+  };
+}
+
+function aggregateWallets(rows: SmartMoneyFlow[]): SmartMoneyWallet[] {
+  const byWallet = new Map<string, { netUsd: number; tradeCount: number; tokens: Set<string> }>();
+  for (const row of rows) {
+    const existing = byWallet.get(row.wallet) ?? { netUsd: 0, tradeCount: 0, tokens: new Set<string>() };
+    existing.netUsd += row.netUsd;
+    existing.tradeCount += row.trades;
+    existing.tokens.add(row.tokenSymbol);
+    byWallet.set(row.wallet, existing);
+  }
+  return [...byWallet.entries()]
+    .map(([wallet, value]) => ({
+      netUsd: roundUsd(value.netUsd),
+      tokenCount: value.tokens.size,
+      tokens: [...value.tokens].sort(),
+      tradeCount: value.tradeCount,
+      wallet,
+    }))
+    .sort((left, right) => right.netUsd - left.netUsd)
+    .slice(0, 10);
+}
+
+function aggregateTokens(rows: SmartMoneyFlow[]): SmartMoneyToken[] {
+  const byToken = new Map<string, { netUsd: number; tokenAddress?: string; tradeCount: number; wallets: Set<string> }>();
+  for (const row of rows) {
+    const key = row.tokenAddress || row.tokenSymbol;
+    const existing = byToken.get(key) ?? { netUsd: 0, tokenAddress: row.tokenAddress, tradeCount: 0, wallets: new Set<string>() };
+    existing.netUsd += row.netUsd;
+    existing.tradeCount += row.trades;
+    existing.wallets.add(row.wallet);
+    byToken.set(key, existing);
+  }
+  return [...byToken.entries()]
+    .map(([key, value]) => ({
+      netUsd: roundUsd(value.netUsd),
+      tokenAddress: value.tokenAddress,
+      tokenSymbol: rows.find((row) => (row.tokenAddress || row.tokenSymbol) === key)?.tokenSymbol ?? key,
+      tradeCount: value.tradeCount,
+      walletCount: value.wallets.size,
+    }))
+    .sort((left, right) => right.netUsd - left.netUsd)
+    .slice(0, 10);
+}
+
+function smartMoneySummary(smartMoney: SmartMoneyInsight): string {
+  const walletCount = smartMoney.topWallets.length;
+  const tokenCount = smartMoney.accumulatedTokens.length;
+  const totalUsd = roundUsd(smartMoney.sourceRows.reduce((sum, row) => sum + row.netUsd, 0));
+  return `Found ${smartMoney.sourceRows.length} visible smart-money accumulation row(s) on ${smartMoney.chain}, covering ${walletCount} wallet(s), ${tokenCount} token(s), and ${formatUsd(totalUsd)} in net buy flow.`;
+}
+
+function numberValue(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.replace(/,/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function roundUsd(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function formatUsd(value: number): string {
+  return `$${Math.round(value).toLocaleString("en-US")}`;
 }
 
 function buildCaveat(plan: OnchainPlan, successCount: number, failedCount: number): string {
