@@ -12,6 +12,7 @@
     "server": "node --import tsx src/server/http.ts",
     "croo:provider": "node --import tsx src/croo/provider.ts",
     "croo:requester-smoke": "node --import tsx scripts/croo-requester-smoke.ts",
+    "croo:a2a-workbench-smoke": "node --import tsx scripts/croo-a2a-workbench-smoke.ts",
     "croo:evidence-report": "node --import tsx scripts/croo-evidence-report.ts",
     "license:create": "node --import tsx scripts/license-admin.ts create",
     "license:list": "node --import tsx scripts/license-admin.ts list",

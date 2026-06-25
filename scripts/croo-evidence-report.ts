@@ -7,10 +7,19 @@ import { redactSecrets } from "../src/core/redact.js";
 import type { CrooOrderEvidence } from "../src/croo/evidence.js";
 
 type RequesterSmokeSummary = {
+  capabilityId?: string;
   command?: string;
+  deliverTxHash?: string;
+  deliveryId?: string;
+  deliveryPreviewHash?: string;
+  deliveryStatus?: string;
   generatedAt?: string;
   negotiationId?: string;
   orderId?: string;
+  orderStatus?: string;
+  paid?: boolean;
+  payTxHash?: string;
+  providerAgentId?: string;
   requesterAgentId?: string;
   requesterWalletAddress?: string;
   serviceId?: string;
@@ -19,11 +28,17 @@ type RequesterSmokeSummary = {
 async function main(): Promise<void> {
   const evidencePath = path.resolve(process.env.LANGCLAW_CROO_EVIDENCE_LOG_PATH?.trim() || path.join("data", "croo-order-evidence.jsonl"));
   const smokePath = path.resolve(process.env.CROO_REQUESTER_SMOKE_OUTPUT_PATH?.trim() || path.join("data", "croo-requester-smoke.json"));
+  const a2aWorkbenchPath = path.resolve(
+    process.env.CROO_A2A_WORKBENCH_SMOKE_OUTPUT_PATH?.trim() || path.join("data", "croo-a2a-workbench-smoke.json")
+  );
   const reportPath = path.resolve(process.env.CROO_LIVE_EVIDENCE_REPORT_PATH?.trim() || path.join("docs", "CROO_LIVE_EVIDENCE.md"));
 
   const evidence = await readEvidence(evidencePath);
   const smoke = await readRequesterSmoke(smokePath);
+  const a2aWorkbench = await readRequesterSmoke(a2aWorkbenchPath);
   const markdown = buildReport({
+    a2aWorkbench,
+    a2aWorkbenchPath,
     evidence,
     evidencePath,
     generatedAt: new Date().toISOString(),
@@ -37,6 +52,8 @@ async function main(): Promise<void> {
 }
 
 function buildReport(input: {
+  a2aWorkbench?: RequesterSmokeSummary;
+  a2aWorkbenchPath: string;
   evidence: CrooOrderEvidence[];
   evidencePath: string;
   generatedAt: string;
@@ -49,10 +66,11 @@ function buildReport(input: {
   const completedOrderIds = unique(delivered.map((record) => record.orderId));
   const negotiationIds = unique(input.evidence.map((record) => record.negotiationId));
   const deliveryHashes = unique(delivered.map((record) => record.deliveryHash));
-  const requesterIds = unique([input.smoke?.requesterAgentId]);
-  const requesterWallets = unique([input.smoke?.requesterWalletAddress]);
+  const requesterIds = unique([input.smoke?.requesterAgentId, input.a2aWorkbench?.requesterAgentId]);
+  const requesterWallets = unique([input.smoke?.requesterWalletAddress, input.a2aWorkbench?.requesterWalletAddress]);
   const commands = unique([
     input.smoke?.command,
+    input.a2aWorkbench?.command,
     "node --import tsx scripts/croo-evidence-report.ts",
   ]);
 
@@ -67,8 +85,10 @@ function buildReport(input: {
     `- Unique requester agent count: ${requesterIds.length}`,
     `- Unique requester wallet count: ${requesterWallets.length}`,
     `- Failed lifecycle event count: ${failed.length}`,
+    `- A2A partner completed order count: ${input.a2aWorkbench?.orderStatus === "completed" ? 1 : 0}`,
     `- Evidence log: \`${path.relative(process.cwd(), input.evidencePath)}\``,
     `- Requester smoke summary: \`${path.relative(process.cwd(), input.smokePath)}\``,
+    `- A2A Workbench smoke summary: \`${path.relative(process.cwd(), input.a2aWorkbenchPath)}\``,
     "",
     "## Completed Orders",
     "",
@@ -99,6 +119,28 @@ function buildReport(input: {
         record.settlementMode ?? "",
         record.generatedAt,
       ])
+    ),
+    "",
+    "## A2A Partner Proof",
+    "",
+    table(
+      ["Field", "Value"],
+      [
+        ["Capability", input.a2aWorkbench?.capabilityId ?? ""],
+        ["Requester agent ID", input.a2aWorkbench?.requesterAgentId ?? ""],
+        ["Provider agent ID", input.a2aWorkbench?.providerAgentId ?? ""],
+        ["Service ID", input.a2aWorkbench?.serviceId ?? ""],
+        ["Negotiation ID", input.a2aWorkbench?.negotiationId ?? ""],
+        ["Order ID", input.a2aWorkbench?.orderId ?? ""],
+        ["Order status", input.a2aWorkbench?.orderStatus ?? ""],
+        ["Paid", input.a2aWorkbench?.paid === undefined ? "" : String(input.a2aWorkbench.paid)],
+        ["Pay tx hash", input.a2aWorkbench?.payTxHash ?? ""],
+        ["Deliver tx hash", input.a2aWorkbench?.deliverTxHash ?? ""],
+        ["Delivery ID", input.a2aWorkbench?.deliveryId ?? ""],
+        ["Delivery status", input.a2aWorkbench?.deliveryStatus ?? ""],
+        ["Delivery preview hash", input.a2aWorkbench?.deliveryPreviewHash ?? ""],
+        ["Generated at", input.a2aWorkbench?.generatedAt ?? ""],
+      ]
     ),
     "",
     "## Requester Proof",

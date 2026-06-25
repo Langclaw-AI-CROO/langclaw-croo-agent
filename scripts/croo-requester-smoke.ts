@@ -37,9 +37,11 @@ type SmokeConfig = {
   capabilityId: string;
   chain: string;
   command: string;
+  existingOrderId?: string;
   outputPath: string;
   pay: boolean;
   prompt: string;
+  requirementsType: "json" | "text";
   requesterKey: string;
   rpcUrl?: string;
   serviceId: string;
@@ -47,6 +49,7 @@ type SmokeConfig = {
   targetUse: string;
   timeframe: string;
   timeoutMs: number;
+  useWebSocket: boolean;
   wsUrl: string;
 };
 
@@ -61,24 +64,18 @@ async function main(): Promise<void> {
     },
     config.requesterKey
   );
-  const stream = await client.connectWebSocket();
+  const stream = config.useWebSocket ? await client.connectWebSocket() : undefined;
   let negotiationId = "";
 
   try {
-    const negotiation = await client.negotiateOrder({
-      serviceId: config.serviceId,
-      requirements: JSON.stringify(buildRequirements(config)),
-    });
-    negotiationId = negotiation.negotiationId;
-    const createdOrder = await waitForOrderState(stream, client, EventType.OrderCreated, config, negotiationId, [
-      "created",
-      "paid",
-      "completed",
-    ]);
+    const createdOrder = config.existingOrderId
+      ? await client.getOrder(config.existingOrderId)
+      : await createOrderFromNegotiation(stream, client, config);
+    negotiationId = createdOrder.negotiationId;
     let paidOrder = createdOrder;
     let payTxHash = createdOrder.payTxHash || undefined;
 
-    if (config.pay) {
+    if (config.pay && !isPostPaymentStatus(createdOrder.status)) {
       const payment = await client.payOrder(createdOrder.orderId);
       paidOrder = payment.order;
       payTxHash = payment.txHash || payment.order.payTxHash || payTxHash;
@@ -87,7 +84,9 @@ async function main(): Promise<void> {
     let completedOrder: Order | undefined;
     let delivery: Delivery | undefined;
     if (config.pay) {
-      completedOrder = await waitForOrderState(stream, client, EventType.OrderCompleted, config, negotiationId, ["completed"]);
+      completedOrder = isCompletedStatus(paidOrder.status)
+        ? paidOrder
+        : await waitForOrderState(stream, client, EventType.OrderCompleted, config, negotiationId, ["completed"]);
       delivery = await client.getDelivery(completedOrder.orderId);
     }
 
@@ -103,7 +102,7 @@ async function main(): Promise<void> {
     await writeSummary(config.outputPath, summary);
     console.log(JSON.stringify(summary, null, 2));
   } finally {
-    stream.close();
+    stream?.close();
   }
 }
 
@@ -112,6 +111,7 @@ function readSmokeConfig(): SmokeConfig {
   const wsUrl = requiredEnv("CROO_WS_URL");
   const requesterKey = readRequesterKey();
   const serviceId = requiredEnv("CROO_TARGET_SERVICE_ID");
+  const existingOrderId = process.env.CROO_SMOKE_ORDER_ID?.trim() || undefined;
   const capabilityId = process.env.CROO_SMOKE_CAPABILITY_ID?.trim() || "langclaw.onchain.intelligence";
   const chain = process.env.CROO_SMOKE_CHAIN?.trim() || "base";
   const prompt = process.env.CROO_SMOKE_PROMPT?.trim() || "Run smart money accumulation on Base last 7 days.";
@@ -119,17 +119,21 @@ function readSmokeConfig(): SmokeConfig {
   const targetUse = process.env.CROO_SMOKE_TARGET_USE?.trim() || "agent-context";
   const timeframe = process.env.CROO_SMOKE_TIMEFRAME?.trim() || "7d";
   const pay = readBoolean(process.env.CROO_SMOKE_PAY, true);
+  const requirementsType = readRequirementsType(process.env.CROO_SMOKE_REQUIREMENTS_TYPE, capabilityId);
   const timeoutMs = readPositiveInt(process.env.CROO_SMOKE_TIMEOUT_MS, 180000);
+  const useWebSocket = readBoolean(process.env.CROO_SMOKE_USE_WS, false);
   const outputPath = path.resolve(process.env.CROO_REQUESTER_SMOKE_OUTPUT_PATH?.trim() || path.join("data", "croo-requester-smoke.json"));
 
   return {
     apiUrl,
     capabilityId,
     chain,
-    command: "node --import tsx scripts/croo-requester-smoke.ts",
+    command: process.env.CROO_SMOKE_COMMAND_LABEL?.trim() || "node --import tsx scripts/croo-requester-smoke.ts",
+    existingOrderId,
     outputPath,
     pay,
     prompt,
+    requirementsType,
     requesterKey,
     rpcUrl: process.env.BASE_RPC_URL?.trim() || undefined,
     serviceId,
@@ -137,8 +141,26 @@ function readSmokeConfig(): SmokeConfig {
     targetUse,
     timeframe,
     timeoutMs,
+    useWebSocket,
     wsUrl,
   };
+}
+
+async function createOrderFromNegotiation(
+  stream: EventStream | undefined,
+  client: AgentClient,
+  config: SmokeConfig
+): Promise<Order> {
+  const negotiation = await client.negotiateOrder({
+    serviceId: config.serviceId,
+    requirements: buildRequirementsPayload(config),
+  });
+  return waitForOrderState(stream, client, EventType.OrderCreated, config, negotiation.negotiationId, [
+    "created",
+    "paying",
+    "paid",
+    "completed",
+  ]);
 }
 
 function readRequesterKey(): string {
@@ -153,6 +175,14 @@ function readRequesterKey(): string {
   }
 
   throw new Error("CROO_REQUESTER_SDK_KEY or CROO_SDK_KEY is required for requester smoke mode.");
+}
+
+function buildRequirementsPayload(config: SmokeConfig): string {
+  if (config.requirementsType === "text") {
+    return JSON.stringify(config.prompt);
+  }
+
+  return JSON.stringify(buildRequirements(config));
 }
 
 function buildRequirements(config: SmokeConfig): Record<string, unknown> {
@@ -178,7 +208,7 @@ function buildRequirements(config: SmokeConfig): Record<string, unknown> {
 }
 
 function waitForOrderState(
-  stream: EventStream,
+  stream: EventStream | undefined,
   client: AgentClient,
   eventType: string,
   config: SmokeConfig,
@@ -186,23 +216,25 @@ function waitForOrderState(
   acceptedStatuses: string[]
 ): Promise<Order> {
   let done = false;
-  const eventOrder = new Promise<Order>((resolve) => {
-    stream.on(eventType, async (event: Event) => {
-      if (done || !event.order_id) {
-        return;
-      }
-      try {
-        const order = await client.getOrder(event.order_id);
-        if (!matchesSmokeOrder(order, config, negotiationId) || !acceptedStatuses.includes(order.status)) {
-          return;
-        }
-        done = true;
-        resolve(order);
-      } catch (error) {
-        console.warn(`Ignored ${eventType} lookup failure.`, error instanceof Error ? error.message : error);
-      }
-    });
-  });
+  const eventOrder = stream
+    ? new Promise<Order>((resolve) => {
+        stream.on(eventType, async (event: Event) => {
+          if (done || !event.order_id) {
+            return;
+          }
+          try {
+            const order = await client.getOrder(event.order_id);
+            if (!matchesSmokeOrder(order, config, negotiationId) || !acceptedStatuses.includes(order.status)) {
+              return;
+            }
+            done = true;
+            resolve(order);
+          } catch (error) {
+            console.warn(`Ignored ${eventType} lookup failure.`, error instanceof Error ? error.message : error);
+          }
+        });
+      })
+    : new Promise<Order>(() => undefined);
   const polledOrder = pollOrderForNegotiation(client, config, negotiationId, acceptedStatuses, () => done);
   return Promise.race([eventOrder, polledOrder]).then((order) => {
     done = true;
@@ -222,7 +254,7 @@ async function pollOrderForNegotiation(
     if (isDone()) {
       return new Promise<Order>(() => undefined);
     }
-    const orders = await client.listOrders({ role: "requester", page: 1, pageSize: 50 });
+    const orders = await client.listOrders({ role: "buyer", page: 1, pageSize: 50 });
     const order = orders.find(
       (candidate) =>
         candidate.negotiationId === negotiationId &&
@@ -242,6 +274,14 @@ function matchesSmokeOrder(order: Order, config: SmokeConfig, negotiationId: str
     return false;
   }
   return !negotiationId || order.negotiationId === negotiationId;
+}
+
+function isPostPaymentStatus(status: string): boolean {
+  return ["paid", "delivering", "evaluating", "completed", "delivered"].includes(status);
+}
+
+function isCompletedStatus(status: string): boolean {
+  return ["completed", "delivered"].includes(status);
 }
 
 function buildSummary(input: {
@@ -273,7 +313,7 @@ function buildSummary(input: {
     providerWalletAddress: input.order.providerWalletAddress || undefined,
     requesterAgentId: input.order.requesterAgentId || undefined,
     requesterWalletAddress: input.order.requesterWalletAddress || undefined,
-    serviceId: input.config.serviceId,
+    serviceId: input.order.serviceId || input.config.serviceId,
   };
 }
 
@@ -299,6 +339,14 @@ function readBoolean(value: string | undefined, fallback: boolean): boolean {
     return fallback;
   }
   return ["1", "true", "yes", "y"].includes(value.trim().toLowerCase());
+}
+
+function readRequirementsType(value: string | undefined, capabilityId: string): "json" | "text" {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "text" || normalized === "json") {
+    return normalized;
+  }
+  return capabilityId === "universal.workbench.agent" ? "text" : "json";
 }
 
 function readPositiveInt(value: string | undefined, fallback: number): number {
