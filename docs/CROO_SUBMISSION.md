@@ -33,7 +33,7 @@ Inputs:
 
 Onchain inputs:
 
-- `query`
+- `research_prompt`
 - `chain`
 - `scope`
 - `tokenAddress`

@@ -24,7 +24,7 @@ test("normalizeOrder maps configured onchain service id to onchain capability", 
       orderId: "order-onchain-service",
       serviceId: "svc-onchain",
       requirements: JSON.stringify({
-        query: "Find current Base ecosystem signals useful for another agent workflow.",
+        research_prompt: "Find current Base ecosystem signals useful for another agent workflow.",
         chain: "base",
         scope: "chain",
         timeframe: "7d",
@@ -36,6 +36,7 @@ test("normalizeOrder maps configured onchain service id to onchain capability", 
     assert.equal(order.id, "order-onchain-service");
     assert.equal(order.serviceId, "svc-onchain");
     assert.equal(order.capabilityId, "langclaw.onchain.intelligence");
+    assert.equal(order.input.topic, "Find current Base ecosystem signals useful for another agent workflow.");
     assert.equal(order.input.mode, "onchain-intelligence");
     assert.equal(order.input.targetUse, "agent-context");
   } finally {
@@ -45,6 +46,19 @@ test("normalizeOrder maps configured onchain service id to onchain capability", 
       process.env.LANGCLAW_ONCHAIN_SERVICE_ID = previous;
     }
   }
+});
+
+test("normalizeOrder keeps query as backward-compatible onchain prompt alias", () => {
+  const order = normalizeOrder({
+    orderId: "order-onchain-query-alias",
+    requirements: JSON.stringify({
+      capabilityId: "langclaw.onchain.intelligence",
+      query: "Check Base TVL today.",
+    }),
+  });
+
+  assert.equal(order.input.topic, "Check Base TVL today.");
+  assert.equal(order.input.mode, "onchain-intelligence");
 });
 
 test("acceptNegotiationForSettlement uses regular accept for non-fund services", async () => {

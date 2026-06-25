@@ -228,7 +228,7 @@ export function normalizeOrder(rawOrder: unknown): CrooOrder {
     capabilityId,
     serviceId,
     input: {
-      topic: String((input as UnknownRecord).topic ?? (input as UnknownRecord).query ?? ""),
+      topic: readOrderPrompt(input as UnknownRecord),
       mode,
       chain: readString((input as UnknownRecord).chain),
       responseLanguage: readResponseLanguage((input as UnknownRecord).responseLanguage),
@@ -243,6 +243,10 @@ export function normalizeOrder(rawOrder: unknown): CrooOrder {
       targetUse: readTargetUse((input as UnknownRecord).targetUse),
     },
   };
+}
+
+function readOrderPrompt(input: UnknownRecord): string {
+  return String(input.research_prompt ?? input.topic ?? input.query ?? input.prompt_research ?? input.prompt ?? "");
 }
 
 export async function acceptNegotiationForSettlement(

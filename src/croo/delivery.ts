@@ -38,6 +38,7 @@ export type OnchainIntelligenceDelivery = {
   capabilityId: "langclaw.onchain.intelligence";
   status: "delivered";
   request: {
+    research_prompt: string;
     query: string;
     chain?: string;
     scope?: string;
@@ -179,11 +180,15 @@ function buildOnchainCapability(): CrooCapability {
     priceUsdc: process.env.LANGCLAW_AGENT_PRICE_USDC ?? "0.10",
     inputSchema: {
       type: "object",
-      required: ["query"],
+      required: ["research_prompt"],
       properties: {
-        query: {
+        research_prompt: {
           type: "string",
           description: "What should Langclaw analyze? Include the chain, token, wallet, protocol, contract, transaction, or market signal you want checked.",
+        },
+        query: {
+          type: "string",
+          description: "Backward-compatible alias for research_prompt.",
         },
         topic: { type: "string" },
         chain: { type: "string", description: "Preferred chain, for example base, ethereum, arbitrum." },
@@ -276,6 +281,7 @@ function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutp
     capabilityId: "langclaw.onchain.intelligence",
     status: "delivered",
     request: {
+      research_prompt: order.input.topic,
       query: order.input.topic,
       chain: order.input.chain,
       scope: order.input.scope,

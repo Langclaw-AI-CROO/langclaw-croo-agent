@@ -22,7 +22,7 @@
   "serviceName": "Langclaw Onchain Intelligence",
   "capabilityId": "langclaw.onchain.intelligence",
   "input": {
-    "query": "Find current Base ecosystem signals useful for another agent workflow.",
+    "research_prompt": "Find current Base ecosystem signals useful for another agent workflow.",
     "chain": "base",
     "scope": "chain",
     "timeframe": "7d",

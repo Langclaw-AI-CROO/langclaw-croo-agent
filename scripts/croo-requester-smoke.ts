@@ -159,7 +159,7 @@ function buildRequirements(config: SmokeConfig): Record<string, unknown> {
   if (config.capabilityId === "langclaw.onchain.intelligence") {
     return {
       capabilityId: config.capabilityId,
-      query: config.prompt,
+      research_prompt: config.prompt,
       chain: config.chain,
       scope: config.scope,
       timeframe: config.timeframe,

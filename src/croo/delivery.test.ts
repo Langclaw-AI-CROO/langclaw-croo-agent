@@ -202,6 +202,7 @@ test("buildDelivery maps onchain output to reusable intelligence packet", () => 
   assert.equal("type" in delivery ? delivery.type : "", "langclaw-onchain-intelligence");
   if ("type" in delivery) {
     assert.equal(delivery.version, "1.0");
+    assert.equal(delivery.request.research_prompt, "Base ecosystem signals");
     assert.equal(delivery.summary, "Semantic summary for requester agents.");
     assert.equal(delivery.keyFindings[0]?.finding, "Semantic finding.");
     assert.equal(delivery.signals[0]?.name, "Semantic signal");

@@ -231,7 +231,7 @@ Required live settings:
 
 The provider appends safe CAP lifecycle evidence to `LANGCLAW_CROO_EVIDENCE_LOG_PATH`. Each JSONL row records the stage, negotiation ID, order ID, capability, input hash, settlement mode, delivery hash, and source count when available. It does not store raw buyer prompts, API keys, or license tokens.
 
-For A2A smoke tests, set `CROO_TARGET_SERVICE_ID` to the same service ID as `LANGCLAW_ONCHAIN_SERVICE_ID`. Requester agents should send `langclaw.onchain.intelligence` requirements with `query`, `chain`, `scope`, `timeframe`, `targetUse`, and `responseLanguage`.
+For A2A smoke tests, set `CROO_TARGET_SERVICE_ID` to the same service ID as `LANGCLAW_ONCHAIN_SERVICE_ID`. Requester agents should send `langclaw.onchain.intelligence` requirements with `research_prompt`, `chain`, `scope`, `timeframe`, `targetUse`, and `responseLanguage`. `query` remains supported as a backward-compatible alias.
 
 ## License Tokens
 
@@ -274,7 +274,7 @@ Optional onchain settings:
 - `LANGCLAW_ONCHAIN_REASONING_MAX_OUTPUT_TOKENS`
 - `LANGCLAW_ONCHAIN_REASONING_MAX_RETRIES`
 
-Onchain semantic reasoning is scoped only to `Langclaw Onchain Intelligence`. It receives the buyer `query` and safe provider summaries, not raw provider payloads, env dumps, API keys, private keys, license tokens, or full evidence logs. Keep `LANGCLAW_ONCHAIN_REASONING_REQUIRED=false` for demo fallback unless you want paid onchain orders to fail when the semantic layer is unavailable.
+Onchain semantic reasoning is scoped only to `Langclaw Onchain Intelligence`. It receives the buyer `research_prompt` and safe provider summaries, not raw provider payloads, env dumps, API keys, private keys, license tokens, or full evidence logs. Keep `LANGCLAW_ONCHAIN_REASONING_REQUIRED=false` for demo fallback unless you want paid onchain orders to fail when the semantic layer is unavailable.
 
 Use `LANGCLAW_PROVIDER_MODE=mock` to run a local dry run without opening a live provider connection.
 
