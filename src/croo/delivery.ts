@@ -1,6 +1,8 @@
 import type { AgentTargetUse, ResearchInput, ResearchOutput } from "../core/types.js";
 import type { SmartMoneyFlow, SmartMoneyInsight } from "../core/onchain/types.js";
+import { stableHash } from "../core/hash.js";
 import type { CreateLicenseResult } from "../license/types.js";
+import type { A2AWorkPack } from "./a2a-workbench.js";
 
 export type CrooCapabilityId = "langclaw.research.brief" | "langclaw.onchain.intelligence" | "langclaw.builder.pass.license";
 
@@ -31,6 +33,10 @@ export type CrooDelivery = {
     sourceCount: number;
   };
 } | OnchainIntelligenceDelivery;
+
+export type BuildDeliveryOptions = {
+  a2aWorkPack?: A2AWorkPack;
+};
 
 export type OnchainIntelligenceDelivery = {
   type: "langclaw-onchain-intelligence";
@@ -87,6 +93,7 @@ export type OnchainIntelligenceDelivery = {
     transactionHashes: string[];
     metrics: string[];
   };
+  a2aWorkPack?: A2AWorkPack;
   smartMoney?: SmartMoneyInsight;
   limitations: string[];
   proof: {
@@ -239,10 +246,10 @@ function buildLicenseCapability(): CrooCapability {
   };
 }
 
-export function buildDelivery(order: CrooOrder, result: ResearchOutput): CrooDelivery {
+export function buildDelivery(order: CrooOrder, result: ResearchOutput, options: BuildDeliveryOptions = {}): CrooDelivery {
   const capabilityId = order.capabilityId ?? capabilityIdForResult(result);
   if (capabilityId === "langclaw.onchain.intelligence") {
-    return buildOnchainIntelligenceDelivery(order, result);
+    return buildOnchainIntelligenceDelivery(order, result, options);
   }
 
   return {
@@ -259,7 +266,11 @@ export function buildDelivery(order: CrooOrder, result: ResearchOutput): CrooDel
   };
 }
 
-function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutput): OnchainIntelligenceDelivery {
+function buildOnchainIntelligenceDelivery(
+  order: CrooOrder,
+  result: ResearchOutput,
+  options: BuildDeliveryOptions
+): OnchainIntelligenceDelivery {
   const onchain = result.onchain;
   const sourceIds = result.sources.map((source) => source.id);
   const bullets = onchain?.bullets.length ? onchain.bullets : [result.summary];
@@ -277,6 +288,13 @@ function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutp
     ...inputAddresses,
   ].filter(isEvmAddress);
   const smartMoneyFields = smartMoney ? buildSmartMoneyDeliveryFields(smartMoney, targetUse) : undefined;
+
+  const deliveryHash = options.a2aWorkPack
+    ? stableHash({
+        a2aWorkPack: options.a2aWorkPack,
+        baseDeliveryHash: result.deliveryProof.deliveryHash,
+      })
+    : result.deliveryProof.deliveryHash;
 
   return {
     type: "langclaw-onchain-intelligence",
@@ -340,13 +358,14 @@ function buildOnchainIntelligenceDelivery(order: CrooOrder, result: ResearchOutp
       transactionHashes: dedupe(transactionHashes),
       metrics: onchain?.plan.intent.metrics ?? [],
     },
+    a2aWorkPack: options.a2aWorkPack,
     smartMoney,
     limitations: semantic?.limitations ?? [
       "This brief is read-only intelligence and does not execute trades or transactions.",
       "Signals should be rechecked if used for time-sensitive decisions.",
     ],
     proof: {
-      deliveryHash: result.deliveryProof.deliveryHash,
+      deliveryHash,
       inputHash: result.deliveryProof.inputHash,
       generatedAt: result.deliveryProof.generatedAt,
       sourceCount: result.deliveryProof.sourceCount,

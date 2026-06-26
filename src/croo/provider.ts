@@ -4,6 +4,17 @@ import { AgentClient, DeliverableType, EventType } from "@croo-network/sdk";
 import type { Delivery, Order } from "@croo-network/sdk/dist/types.js";
 import { buildCapabilities, buildDelivery, buildLicenseDelivery, formatLicenseDeliveryText, type CrooCapabilityId, type CrooOrder } from "./delivery.js";
 import { appendCrooOrderEvidence, evidenceForDelivery, evidenceForOrder } from "./evidence.js";
+import {
+  DEFAULT_A2A_WORKBENCH_CAPABILITY_ID,
+  DEFAULT_A2A_WORKBENCH_PROVIDER_AGENT_ID,
+  DEFAULT_A2A_WORKBENCH_SERVICE_ID,
+  hireA2AWorkbench,
+  isA2AWorkbenchEnabled,
+  isA2AWorkbenchRequired,
+  type A2AWorkbenchClient,
+  type A2AWorkbenchRun,
+  type A2AWorkbenchRunnerInput,
+} from "./a2a-workbench.js";
 import { redactSecrets, redactUnknown as redactUnknownValue } from "../core/redact.js";
 import { runCrooResearchAgent } from "../core/run-research.js";
 import type { AgentTargetUse, ResearchDepth, ResearchInput, ResearchMode, ResearchOutput, ResponseLanguage } from "../core/types.js";
@@ -34,6 +45,7 @@ type ActiveOrderClient = PaidOrderClient & {
 };
 
 type PaidOrderProcessorOptions = {
+  a2aWorkbenchRunner?: (input: A2AWorkbenchRunnerInput) => Promise<A2AWorkbenchRun>;
   evidenceRecorder?: typeof recordCrooOrderEvidence;
   processingOrderIds?: Set<string>;
   researchRunner?: (input: ResearchInput) => Promise<ResearchOutput>;
@@ -213,7 +225,9 @@ export async function processPaidOrder(
       return;
     }
 
-    const delivery = buildDelivery(order, await researchRunner(order.input));
+    const research = await researchRunner(order.input);
+    const a2aWorkPack = await maybeRunA2AWorkbench(client, order, research, evidenceRecorder, options);
+    const delivery = buildDelivery(order, research, { a2aWorkPack });
     await client.deliverOrder(chainOrder.orderId, {
       deliverableType: DeliverableType.Schema,
       deliverableSchema: JSON.stringify(delivery),
@@ -241,6 +255,54 @@ export async function processPaidOrder(
     console.error("Failed to process paid CROO order.", safeErrorMessage(error));
   } finally {
     processingOrderIds?.delete(orderId);
+  }
+}
+
+async function maybeRunA2AWorkbench(
+  client: PaidOrderClient,
+  order: CrooOrder,
+  result: ResearchOutput,
+  evidenceRecorder: typeof recordCrooOrderEvidence,
+  options: PaidOrderProcessorOptions
+) {
+  if (!isOnchainOrder(order) || !isA2AWorkbenchEnabled()) {
+    return undefined;
+  }
+
+  const runner = options.a2aWorkbenchRunner ?? ((input: A2AWorkbenchRunnerInput) => hireA2AWorkbench(input));
+  try {
+    const run = await runner({
+      client: client as unknown as A2AWorkbenchClient,
+      order,
+      result,
+    });
+    for (const event of run.events) {
+      await evidenceRecorder(
+        evidenceForOrder(event.stage, order, {
+          a2aCapabilityId: DEFAULT_A2A_WORKBENCH_CAPABILITY_ID,
+          a2aNegotiationId: event.negotiationId,
+          a2aOrderId: event.orderId,
+          a2aProviderAgentId: run.workPack.providerAgentId,
+          a2aServiceId: run.workPack.serviceId,
+          deliveryHash: event.deliveryHash,
+          error: event.error,
+        })
+      );
+    }
+    return run.workPack;
+  } catch (error) {
+    await evidenceRecorder(
+      evidenceForOrder("a2a_workbench_failed", order, {
+        a2aCapabilityId: DEFAULT_A2A_WORKBENCH_CAPABILITY_ID,
+        a2aProviderAgentId: DEFAULT_A2A_WORKBENCH_PROVIDER_AGENT_ID,
+        a2aServiceId: DEFAULT_A2A_WORKBENCH_SERVICE_ID,
+        error: safeErrorMessage(error),
+      })
+    );
+    if (isA2AWorkbenchRequired()) {
+      throw error;
+    }
+    return undefined;
   }
 }
 
@@ -470,6 +532,10 @@ function capabilityIdForServiceId(serviceId: string | undefined): CrooCapability
 
 function isLicenseOrder(order: CrooOrder): boolean {
   return order.capabilityId === "langclaw.builder.pass.license" || order.serviceId === licenseServiceId();
+}
+
+function isOnchainOrder(order: CrooOrder): boolean {
+  return order.capabilityId === "langclaw.onchain.intelligence" || order.serviceId === onchainServiceId();
 }
 
 function licenseServiceId(): string {

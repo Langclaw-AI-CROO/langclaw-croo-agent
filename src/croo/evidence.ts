@@ -12,9 +12,18 @@ export type CrooEvidenceStage =
   | "order_delivered"
   | "order_failed"
   | "order_recovered"
-  | "order_reconcile_skipped";
+  | "order_reconcile_skipped"
+  | "a2a_workbench_negotiation_created"
+  | "a2a_workbench_order_paid"
+  | "a2a_workbench_delivery_received"
+  | "a2a_workbench_failed";
 
 export type CrooOrderEvidence = {
+  a2aCapabilityId?: string;
+  a2aNegotiationId?: string;
+  a2aOrderId?: string;
+  a2aProviderAgentId?: string;
+  a2aServiceId?: string;
   capabilityId?: string;
   deliveryHash?: string;
   error?: string;
@@ -62,11 +71,16 @@ export function evidenceForOrder(
     negotiationId: extra.negotiationId,
     capabilityId: order.capabilityId,
     serviceId: order.serviceId,
-    inputHash: stableHash(order.input),
+  inputHash: stableHash(order.input),
     settlementMode: extra.settlementMode,
     deliveryHash: extra.deliveryHash,
     sourceCount: extra.sourceCount,
     error: extra.error,
+    a2aCapabilityId: extra.a2aCapabilityId,
+    a2aNegotiationId: extra.a2aNegotiationId,
+    a2aOrderId: extra.a2aOrderId,
+    a2aProviderAgentId: extra.a2aProviderAgentId,
+    a2aServiceId: extra.a2aServiceId,
   };
 }
 

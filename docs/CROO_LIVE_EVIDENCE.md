@@ -1,14 +1,15 @@
 # CROO Live Evidence
 
-Generated at: 2026-06-25T11:00:47.562Z
+Generated at: 2026-06-26T08:10:46.685Z
 
 ## Summary
 
-- Completed order count: 0
+- Completed order count: 1
 - Unique requester agent count: 1
 - Unique requester wallet count: 1
 - Failed lifecycle event count: 0
 - A2A partner completed order count: 1
+- Integrated A2A Workbench completed order count: 0
 - Evidence log: `data/croo-order-evidence.jsonl`
 - Requester smoke summary: `data/croo-requester-smoke.json`
 - A2A Workbench smoke summary: `data/croo-a2a-workbench-smoke.json`
@@ -17,13 +18,20 @@ Generated at: 2026-06-25T11:00:47.562Z
 
 | Order ID | Negotiation ID | Service ID | Capability | Settlement | Delivery Hash | Sources | Timestamp |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-|  |  |  |  |  |  |  |  |
+| cb2ba2fa-9258-425b-b738-694a44d844da | e9a02a62-30f8-458b-8d78-d0cf44b0c659 | 9307e592-7a95-4679-9152-300fd052e614 | langclaw.onchain.intelligence |  | f3f734d781e2fc5c58f705fc7fba6fbee1c857e539a05d24a6c6c6a0f7075728 | 4 | 2026-06-25T12:53:56.591Z |
 
 ## Lifecycle Events
 
 | Stage | Order ID | Negotiation ID | Service ID | Capability | Settlement | Timestamp |
 | --- | --- | --- | --- | --- | --- | --- |
-|  |  |  |  |  |  |  |
+| order_paid | cb2ba2fa-9258-425b-b738-694a44d844da | e9a02a62-30f8-458b-8d78-d0cf44b0c659 | 9307e592-7a95-4679-9152-300fd052e614 | langclaw.onchain.intelligence |  | 2026-06-25T12:53:32.672Z |
+| order_delivered | cb2ba2fa-9258-425b-b738-694a44d844da | e9a02a62-30f8-458b-8d78-d0cf44b0c659 | 9307e592-7a95-4679-9152-300fd052e614 | langclaw.onchain.intelligence |  | 2026-06-25T12:53:56.591Z |
+
+## Integrated A2A Workbench Proof
+
+| Stage | Langclaw Order ID | Workbench Negotiation ID | Workbench Order ID | Workbench Service ID | Provider Agent ID | Delivery Hash | Timestamp |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+|  |  |  |  |  |  |  |  |
 
 ## A2A Partner Proof
 

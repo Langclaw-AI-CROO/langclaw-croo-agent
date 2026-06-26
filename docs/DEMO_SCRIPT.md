@@ -127,9 +127,20 @@ Show `docs/CROO_LIVE_EVIDENCE.md`:
 - order ID
 - order paid stage
 - order delivered stage
+- integrated A2A Workbench stages when enabled
+- Workbench downstream order ID and delivery hash
 - delivery hash
 - source count
 - requester agent or wallet evidence
+
+When `LANGCLAW_A2A_WORKBENCH_ENABLED=true`, explain the full A2A path:
+
+```text
+Requester agent hires Langclaw
+Langclaw produces onchain intelligence
+Langclaw hires Universal Workbench
+Langclaw returns the intelligence packet with an A2A work pack
+```
 
 Do not show API keys, model details, private keys, license tokens, or raw evidence logs in the recording.
 

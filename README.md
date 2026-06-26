@@ -148,6 +148,12 @@ Store provider keys only on the VPS:
 - `LANGCLAW_LICENSE_DEFAULT_DAYS`
 - `LANGCLAW_LICENSE_DEFAULT_CALLS`
 - `LANGCLAW_CROO_EVIDENCE_LOG_PATH`
+- `LANGCLAW_A2A_WORKBENCH_ENABLED`
+- `LANGCLAW_A2A_WORKBENCH_REQUIRED`
+- `LANGCLAW_A2A_WORKBENCH_SERVICE_ID`
+- `LANGCLAW_A2A_WORKBENCH_CAPABILITY_ID`
+- `LANGCLAW_A2A_WORKBENCH_TIMEOUT_MS`
+- `LANGCLAW_A2A_WORKBENCH_MAX_INPUT_CHARS`
 
 Start the hosted MCP server:
 
@@ -236,6 +242,8 @@ The provider appends safe CAP lifecycle evidence to `LANGCLAW_CROO_EVIDENCE_LOG_
 
 For A2A smoke tests, set `CROO_TARGET_SERVICE_ID` to the same service ID as `LANGCLAW_ONCHAIN_SERVICE_ID`. Requester agents should send `langclaw.onchain.intelligence` requirements with `research_prompt`, `chain`, `scope`, `timeframe`, `targetUse`, and `responseLanguage`. `query` remains supported as a backward-compatible alias.
 
+`Langclaw Onchain Intelligence` can optionally hire Universal Workbench as a downstream A2A agent. Enable it with `LANGCLAW_A2A_WORKBENCH_ENABLED=true`. Langclaw uses its own CROO agent key as the requester, so buyers do not provide a Langclaw SDK key. The default downstream target is service `a8f1c20d-73f4-4551-856a-32315e18d261` with capability `universal.workbench.agent`. Keep `LANGCLAW_A2A_WORKBENCH_REQUIRED=false` for live reliability. If Workbench times out, Langclaw still delivers the onchain intelligence packet and omits `a2aWorkPack` from the buyer-facing delivery.
+
 ## License Tokens
 
 Paid MCP access uses a license token. The default paid license lasts 30 days and allows 300 MCP tool calls.
@@ -279,6 +287,12 @@ Optional onchain settings:
 - `LANGCLAW_ONCHAIN_REASONING_MAX_INPUT_CHARS`
 - `LANGCLAW_ONCHAIN_REASONING_MAX_OUTPUT_TOKENS`
 - `LANGCLAW_ONCHAIN_REASONING_MAX_RETRIES`
+- `LANGCLAW_A2A_WORKBENCH_ENABLED`
+- `LANGCLAW_A2A_WORKBENCH_REQUIRED`
+- `LANGCLAW_A2A_WORKBENCH_SERVICE_ID`
+- `LANGCLAW_A2A_WORKBENCH_CAPABILITY_ID`
+- `LANGCLAW_A2A_WORKBENCH_TIMEOUT_MS`
+- `LANGCLAW_A2A_WORKBENCH_MAX_INPUT_CHARS`
 
 Onchain semantic reasoning is scoped only to `Langclaw Onchain Intelligence`. It receives the buyer `research_prompt` and safe provider summaries, not raw provider payloads, env dumps, API keys, private keys, license tokens, or full evidence logs. Keep `LANGCLAW_ONCHAIN_REASONING_REQUIRED=false` for demo fallback unless you want paid onchain orders to fail when the semantic layer is unavailable.
 

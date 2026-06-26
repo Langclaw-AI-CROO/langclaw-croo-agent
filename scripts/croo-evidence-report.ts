@@ -63,6 +63,10 @@ function buildReport(input: {
 }): string {
   const delivered = input.evidence.filter((record) => record.stage === "order_delivered");
   const failed = input.evidence.filter((record) => record.stage === "order_failed");
+  const integratedA2a = input.evidence.filter((record) => record.stage.startsWith("a2a_workbench_"));
+  const integratedA2aCompleted = unique(
+    integratedA2a.filter((record) => record.stage === "a2a_workbench_delivery_received").map((record) => record.a2aOrderId)
+  );
   const completedOrderIds = unique(delivered.map((record) => record.orderId));
   const negotiationIds = unique(input.evidence.map((record) => record.negotiationId));
   const deliveryHashes = unique(delivered.map((record) => record.deliveryHash));
@@ -86,6 +90,7 @@ function buildReport(input: {
     `- Unique requester wallet count: ${requesterWallets.length}`,
     `- Failed lifecycle event count: ${failed.length}`,
     `- A2A partner completed order count: ${input.a2aWorkbench?.orderStatus === "completed" ? 1 : 0}`,
+    `- Integrated A2A Workbench completed order count: ${integratedA2aCompleted.length}`,
     `- Evidence log: \`${path.relative(process.cwd(), input.evidencePath)}\``,
     `- Requester smoke summary: \`${path.relative(process.cwd(), input.smokePath)}\``,
     `- A2A Workbench smoke summary: \`${path.relative(process.cwd(), input.a2aWorkbenchPath)}\``,
@@ -117,6 +122,22 @@ function buildReport(input: {
         record.serviceId ?? "",
         record.capabilityId ?? "",
         record.settlementMode ?? "",
+        record.generatedAt,
+      ])
+    ),
+    "",
+    "## Integrated A2A Workbench Proof",
+    "",
+    table(
+      ["Stage", "Langclaw Order ID", "Workbench Negotiation ID", "Workbench Order ID", "Workbench Service ID", "Provider Agent ID", "Delivery Hash", "Timestamp"],
+      integratedA2a.map((record) => [
+        record.stage,
+        record.orderId ?? "",
+        record.a2aNegotiationId ?? "",
+        record.a2aOrderId ?? "",
+        record.a2aServiceId ?? "",
+        record.a2aProviderAgentId ?? "",
+        record.deliveryHash ?? "",
         record.generatedAt,
       ])
     ),

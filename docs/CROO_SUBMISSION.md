@@ -52,6 +52,7 @@ Outputs:
 - risks
 - opportunities
 - agent reuse hints
+- optional Universal Workbench A2A work pack
 - sources
 - onchain context
 - delivery proof
@@ -69,7 +70,7 @@ Outputs:
 4. Show `npx @langclaw/mcp-client` as the user install path with a license token.
 5. Start the live CROO provider.
 6. Run the requester smoke against the `Langclaw Onchain Intelligence` service ID.
-7. Show the schema delivery packet and evidence report.
+7. Show the schema delivery packet, including `a2aWorkPack` when Universal Workbench is enabled.
 8. Show that Codex install includes MCP, skill, and plugin.
 
 ## Dune Dynamic SQL

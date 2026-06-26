@@ -394,6 +394,60 @@ test("buildDelivery includes smart-money rows when Dune data is available", () =
   }
 });
 
+test("buildDelivery includes optional A2A work pack in onchain delivery", () => {
+  const result: ResearchOutput = {
+    title: "Base A2A",
+    summary: "Base intelligence completed.",
+    recommendation: "Use the work pack.",
+    confidence: "medium",
+    sources: [],
+    providerTrace: [],
+    markdown: "# Base A2A",
+    deliveryProof: {
+      deliveryHash: "base-delivery-hash",
+      generatedAt: "2026-06-25T00:00:00.000Z",
+      inputHash: "base-input-hash",
+      sourceCount: 0,
+      executionLog: [],
+    },
+  };
+
+  const delivery = buildDelivery(
+    {
+      id: "order-a2a-1",
+      capabilityId: "langclaw.onchain.intelligence",
+      input: {
+        topic: "smart money on Base",
+        chain: "base",
+        scope: "chain",
+      },
+    },
+    result,
+    {
+      a2aWorkPack: {
+        actionSteps: ["Review wallet cluster"],
+        deliveryHash: "workbench-hash",
+        evidenceChecklist: ["Verify Dune evidence rows"],
+        orderId: "order-workbench-1",
+        providerAgentId: "0ad53b08-34bf-47a3-870f-5be9eaca0262",
+        reusePlan: ["Reuse as downstream agent context"],
+        serviceId: "a8f1c20d-73f4-4551-856a-32315e18d261",
+        status: "completed",
+        summary: "Workbench action pack ready.",
+      },
+    }
+  );
+
+  assert.equal("type" in delivery ? delivery.type : "", "langclaw-onchain-intelligence");
+  if ("type" in delivery) {
+    assert.equal(delivery.a2aWorkPack?.status, "completed");
+    assert.equal(delivery.a2aWorkPack?.orderId, "order-workbench-1");
+    assert.equal(delivery.a2aWorkPack?.deliveryHash, "workbench-hash");
+    assert.notEqual(delivery.proof.deliveryHash, "base-delivery-hash");
+    assert.doesNotMatch(JSON.stringify(delivery), /SDK|private|sk-proj-|reasoningModel|OpenAI/);
+  }
+});
+
 test("buildDelivery reports no rows for empty smart-money output", () => {
   const baseResult: ResearchOutput = {
     title: "Base smart money",

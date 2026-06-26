@@ -126,3 +126,40 @@ test("evidenceForOrder supports safe recovery stages", async () => {
     await rm(tempDir, { force: true, recursive: true });
   }
 });
+
+test("evidenceForOrder supports safe A2A Workbench stages", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "langclaw-croo-evidence-a2a-"));
+  const filePath = path.join(tempDir, "orders.jsonl");
+
+  try {
+    const order = {
+      id: "order-parent-1",
+      capabilityId: "langclaw.onchain.intelligence" as const,
+      serviceId: "svc-onchain",
+      input: { topic: "smart money on Base sk-proj-secret" },
+    };
+
+    await appendCrooOrderEvidence(
+      evidenceForOrder("a2a_workbench_delivery_received", order, {
+        a2aCapabilityId: "universal.workbench.agent",
+        a2aNegotiationId: "neg-workbench-1",
+        a2aOrderId: "order-workbench-1",
+        a2aProviderAgentId: "0ad53b08-34bf-47a3-870f-5be9eaca0262",
+        a2aServiceId: "a8f1c20d-73f4-4551-856a-32315e18d261",
+        deliveryHash: "workbench-hash",
+      }),
+      { filePath, now: new Date("2026-06-25T01:00:00.000Z") }
+    );
+
+    const line = (await readFile(filePath, "utf8")).trim();
+    const record = JSON.parse(line) as Record<string, unknown>;
+
+    assert.equal(record.stage, "a2a_workbench_delivery_received");
+    assert.equal(record.orderId, "order-parent-1");
+    assert.equal(record.a2aOrderId, "order-workbench-1");
+    assert.equal(record.a2aServiceId, "a8f1c20d-73f4-4551-856a-32315e18d261");
+    assert.doesNotMatch(line, /smart money on Base|sk-proj-secret/);
+  } finally {
+    await rm(tempDir, { force: true, recursive: true });
+  }
+});
