@@ -5,5 +5,5 @@ dist/
 .DS_Store
 coverage/
 *.log
-data/licenses.json
-data/licenses.json.tmp
+*.tsbuildinfo
+data/

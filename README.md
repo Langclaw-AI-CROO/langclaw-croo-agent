@@ -315,6 +315,8 @@ The requester smoke uses the requester agent's own CROO key. It reads `CROO_REQU
 
 The requester smoke writes a redacted summary to `data/croo-requester-smoke.json`. The report command turns provider and requester evidence into `docs/CROO_LIVE_EVIDENCE.md` for demo and submission review.
 
+The `data/` directory is local runtime output and is intentionally ignored. Keep shareable submission evidence in `docs/CROO_LIVE_EVIDENCE.md`.
+
 ## Development
 
 ```bash
