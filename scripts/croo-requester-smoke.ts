@@ -84,10 +84,9 @@ async function main(): Promise<void> {
     let completedOrder: Order | undefined;
     let delivery: Delivery | undefined;
     if (config.pay) {
-      completedOrder = isCompletedStatus(paidOrder.status)
-        ? paidOrder
-        : await waitForOrderState(stream, client, EventType.OrderCompleted, config, negotiationId, ["completed"]);
-      delivery = await client.getDelivery(completedOrder.orderId);
+      const delivered = await waitForOrderDelivery(client, config, negotiationId, paidOrder);
+      completedOrder = delivered.order;
+      delivery = delivered.delivery;
     }
 
     const summary = buildSummary({
@@ -269,6 +268,44 @@ async function pollOrderForNegotiation(
   throw new Error(`Timed out polling order for negotiation ${negotiationId}.`);
 }
 
+async function waitForOrderDelivery(
+  client: AgentClient,
+  config: SmokeConfig,
+  negotiationId: string,
+  initialOrder: Order
+): Promise<{ delivery: Delivery; order: Order }> {
+  const startedAt = Date.now();
+  let latestOrder = initialOrder;
+  while (Date.now() - startedAt < config.timeoutMs) {
+    const delivery = await readAcceptedDelivery(client, latestOrder.orderId);
+    if (delivery) {
+      return { delivery, order: latestOrder };
+    }
+
+    if (isCompletedStatus(latestOrder.status)) {
+      const completedDelivery = await client.getDelivery(latestOrder.orderId);
+      return { delivery: completedDelivery, order: latestOrder };
+    }
+
+    const orders = await client.listOrders({ role: "buyer", page: 1, pageSize: 50 });
+    const order = orders.find((candidate) => matchesSmokeOrder(candidate, config, negotiationId));
+    if (order) {
+      latestOrder = order;
+    }
+    await sleep(3000);
+  }
+  throw new Error(`Timed out polling delivery for negotiation ${negotiationId}.`);
+}
+
+async function readAcceptedDelivery(client: AgentClient, orderId: string): Promise<Delivery | undefined> {
+  try {
+    const delivery = await client.getDelivery(orderId);
+    return isDeliveryAccepted(delivery.status) ? delivery : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function matchesSmokeOrder(order: Order, config: SmokeConfig, negotiationId: string): boolean {
   if (order.serviceId !== config.serviceId) {
     return false;
@@ -277,11 +314,19 @@ function matchesSmokeOrder(order: Order, config: SmokeConfig, negotiationId: str
 }
 
 function isPostPaymentStatus(status: string): boolean {
-  return ["paid", "delivering", "evaluating", "completed", "delivered"].includes(status);
+  return ["paid", "delivering", "evaluating", "completed", "delivered"].includes(normalizeStatus(status));
 }
 
 function isCompletedStatus(status: string): boolean {
-  return ["completed", "delivered"].includes(status);
+  return ["completed", "delivered"].includes(normalizeStatus(status));
+}
+
+function isDeliveryAccepted(status: string): boolean {
+  return ["submitted", "accepted"].includes(normalizeStatus(status));
+}
+
+function normalizeStatus(status: string): string {
+  return status.trim().toLowerCase();
 }
 
 function buildSummary(input: {
