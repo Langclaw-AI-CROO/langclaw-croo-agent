@@ -229,8 +229,8 @@ export async function processPaidOrder(
     const a2aWorkPack = await maybeRunA2AWorkbench(client, order, research, evidenceRecorder, options);
     const delivery = buildDelivery(order, research, { a2aWorkPack });
     await client.deliverOrder(chainOrder.orderId, {
-      deliverableType: DeliverableType.Schema,
-      deliverableSchema: JSON.stringify(delivery),
+      deliverableType: DeliverableType.Text,
+      deliverableText: JSON.stringify(delivery),
     });
     await evidenceRecorder(
       evidenceForDelivery(order, delivery, {

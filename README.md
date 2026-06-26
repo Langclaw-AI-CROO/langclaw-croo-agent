@@ -9,7 +9,7 @@ Langclaw can run without a model API key for non-onchain services. `Langclaw Onc
 ## What It Does
 
 - Accepts paid research orders through CROO CAP.
-- Exposes `Langclaw Onchain Intelligence` as a 0.10 USDC schema service for requester agents.
+- Exposes `Langclaw Onchain Intelligence` as a 0.10 USDC service for requester agents.
 - Exposes MCP tools for Codex, Claude Code CLI, Cursor, Windsurf, and other MCP clients.
 - Ships a Codex plugin with a small skill that tells an agent when to call Langclaw.
 - Produces source-backed research, onchain intelligence, claim checks, builder submission reviews, and readiness checks.
@@ -114,9 +114,16 @@ Service Name: Langclaw Onchain Intelligence
 Description: Source-backed onchain intelligence for agents that need read-only chain, token, wallet, contract, protocol, and market context. Langclaw plans the request, runs validated onchain tools, and returns a structured intelligence packet with sources, risks, opportunities, and reusable agent context.
 Price: 0.10 USDC
 SLA: 15 minutes
-Deliverable: Schema
+Deliverable: Text JSON
 Requirements: Schema
 ```
+
+Store listing evidence to include in the final submission:
+
+- Public CROO Agent Store listing URL.
+- Screenshot that shows service name, price, input fields, output format, and SLA.
+- Screenshot or export that shows the service is discoverable by humans or requester agents.
+- Service ID for `Langclaw Onchain Intelligence`.
 
 ## VPS Operator Setup
 
@@ -317,6 +324,8 @@ The requester smoke writes a redacted summary to `data/croo-requester-smoke.json
 
 The `data/` directory is local runtime output and is intentionally ignored. Keep shareable submission evidence in `docs/CROO_LIVE_EVIDENCE.md`.
 
+For final commerce proof, capture at least one paid requester order with requester agent ID, requester wallet, service ID, negotiation ID, order ID, payment transaction hash, delivery transaction hash when available, and delivery hash.
+
 ## Development
 
 ```bash
@@ -333,6 +342,10 @@ npm run scan:dash
 ## Submission Story
 
 Langclaw CROO Agent shows agent commerce in practice. A buyer can pay for a callable research or onchain intelligence capability, receive a verifiable delivery payload, and reuse the same hosted intelligence from coding tools through remote MCP without cloning this repository.
+
+## Anti-Sybil Proof
+
+Use real requester agents and buyer wallets for final proof. Keep provider and requester keys separate. Do not use fake payments, self-trade loops, or synthetic order activity as reward evidence. Keep redacted CROO order logs, requester smoke summaries, transaction hashes, and Store listing screenshots available for human review.
 
 ## Submission Docs
 

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { DeliverableType } from "@croo-network/sdk";
+
 import { LicenseStore } from "../license/store.js";
 import { acceptNegotiationForSettlement, normalizeOrder, processPaidOrder, reconcileActiveProviderOrders } from "./provider.js";
 
@@ -283,7 +285,7 @@ test("processPaidOrder includes A2A Workbench work pack for enabled onchain orde
   }
 
   assert.equal(deliveries.length, 1);
-  const schema = JSON.parse((deliveries[0] as { deliverableSchema: string }).deliverableSchema) as Record<string, unknown>;
+  const schema = parseTextDelivery(deliveries[0]);
   assert.equal((schema.a2aWorkPack as { status?: string }).status, "completed");
   assert.equal((schema.a2aWorkPack as { orderId?: string }).orderId, "order-workbench-1");
   assert.deepEqual(
@@ -339,7 +341,7 @@ test("processPaidOrder keeps onchain delivery when optional Workbench add-on fai
   }
 
   assert.equal(deliveries.length, 1);
-  const schema = JSON.parse((deliveries[0] as { deliverableSchema: string }).deliverableSchema) as Record<string, unknown>;
+  const schema = parseTextDelivery(deliveries[0]);
   assert.equal("a2aWorkPack" in schema, false);
   assert.doesNotMatch(JSON.stringify(schema), /sk-proj-secret/);
   assert.deepEqual(
@@ -433,7 +435,7 @@ test("processPaidOrder does not call A2A Workbench for non-onchain orders", asyn
 
   assert.equal(called, false);
   assert.equal(deliveries.length, 1);
-  const schema = JSON.parse((deliveries[0] as { deliverableSchema: string }).deliverableSchema) as Record<string, unknown>;
+  const schema = parseTextDelivery(deliveries[0]);
   assert.equal("a2aWorkPack" in schema, false);
 });
 
@@ -607,14 +609,14 @@ test("processPaidOrder records order_failed when delivery build or submit fails"
     },
   });
 
-  await processPaidOrder(client, new Map(), new LicenseStore(), "order-failed-1", {
-    evidenceRecorder: async (record) => {
-      evidence.push(record);
-    },
-    researchRunner: async () => {
-      throw new Error("schema failed with sk-proj-secret");
-    },
-  });
+    await processPaidOrder(client, new Map(), new LicenseStore(), "order-failed-1", {
+      evidenceRecorder: async (record) => {
+        evidence.push(record);
+      },
+      researchRunner: async () => {
+        throw new Error("delivery failed with sk-proj-secret");
+      },
+    });
 
   assert.deepEqual(
     evidence.map((record) => (record as { stage: string }).stage),
@@ -686,4 +688,14 @@ function restoreEnv(name: string, value: string | undefined): void {
   } else {
     process.env[name] = value;
   }
+}
+
+function parseTextDelivery(delivery: unknown): Record<string, unknown> {
+  const request = delivery as { deliverableText?: string; deliverableType?: unknown };
+  assert.equal(request.deliverableType, DeliverableType.Text);
+  const text = request.deliverableText;
+  if (typeof text !== "string") {
+    assert.fail("Expected text JSON delivery.");
+  }
+  return JSON.parse(text) as Record<string, unknown>;
 }

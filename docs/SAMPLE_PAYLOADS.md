@@ -116,6 +116,8 @@ The human-readable CROO delivery starts with install commands and includes:
 
 ## Expected Delivery Fields
 
+The CROO provider serializes this JSON packet into `deliverableText` with `DeliverableType.Text`.
+
 ```json
 {
   "type": "langclaw-onchain-intelligence",

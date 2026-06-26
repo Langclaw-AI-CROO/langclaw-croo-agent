@@ -18,7 +18,7 @@ Primary CROO Store service:
 Langclaw Onchain Intelligence
 Price: 0.10 USDC
 SLA: 15 minutes
-Deliverable: Schema
+Deliverable: Text JSON
 Requirements: Schema
 ```
 
@@ -68,10 +68,11 @@ Outputs:
 2. Call `langclaw_builder_review` for the project.
 3. Call `langclaw_onchain_intelligence` for Base chain or token analytics.
 4. Show `npx @langclaw/mcp-client` as the user install path with a license token.
-5. Start the live CROO provider.
-6. Run the requester smoke against the `Langclaw Onchain Intelligence` service ID.
-7. Show the schema delivery packet, including `a2aWorkPack` when Universal Workbench is enabled.
-8. Show that Codex install includes MCP, skill, and plugin.
+5. Show the CROO Agent Store listing URL or screenshot.
+6. Start the live CROO provider.
+7. Run the requester smoke against the `Langclaw Onchain Intelligence` service ID.
+8. Show the text JSON delivery packet, including `a2aWorkPack` when Universal Workbench is enabled.
+9. Show that Codex install includes MCP, skill, and plugin.
 
 ## Dune Dynamic SQL
 
@@ -93,3 +94,8 @@ The onchain intelligence route supports safe generated Dune SQL for DEX accumula
 - Cleanup scan returns no matches.
 - Secret scan returns no matches.
 - Dune dynamic SQL tests pass.
+- Public GitHub URL is in the DoraHacks copy.
+- CROO Agent Store listing URL or screenshot is attached.
+- Demo video is 5 minutes or shorter.
+- Requester proof includes requester agent, requester wallet, order ID, payment hash, and delivery hash.
+- Anti-sybil notes explain real counterparties, no fake payments, and audit-ready logs.

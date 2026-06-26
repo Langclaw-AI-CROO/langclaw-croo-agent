@@ -29,9 +29,7 @@ Generated at: 2026-06-26T08:10:46.685Z
 
 ## Integrated A2A Workbench Proof
 
-| Stage | Langclaw Order ID | Workbench Negotiation ID | Workbench Order ID | Workbench Service ID | Provider Agent ID | Delivery Hash | Timestamp |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-|  |  |  |  |  |  |  |  |
+No integrated A2A Workbench events were captured in the Langclaw order evidence. Use the partner proof below, or enable `LANGCLAW_A2A_WORKBENCH_ENABLED=true` for the next paid onchain smoke.
 
 ## A2A Partner Proof
 
@@ -56,11 +54,20 @@ Generated at: 2026-06-26T08:10:46.685Z
 
 | Field | Value |
 | --- | --- |
-| Requester agent ID |  |
-| Requester wallet |  |
-| Service ID |  |
-| Smoke negotiation ID |  |
-| Smoke order ID |  |
+| Requester agent ID | Not captured in requester smoke summary. |
+| Requester wallet | Not captured in requester smoke summary. |
+| Service ID | Not captured in requester smoke summary. |
+| Smoke negotiation ID | Not captured in requester smoke summary. |
+| Smoke order ID | Not captured in requester smoke summary. |
+
+## Anti-Sybil Notes
+
+- Unique requester agents captured: 1.
+- Unique requester wallets captured: 1.
+- Use real requester agents and buyer wallets for final proof.
+- Keep provider and requester keys separate.
+- Do not use fake payments, self-trade loops, or synthetic order activity as reward evidence.
+- Keep redacted logs available for random human audit.
 
 ## Commands
 

@@ -128,19 +128,30 @@ function buildReport(input: {
     "",
     "## Integrated A2A Workbench Proof",
     "",
-    table(
-      ["Stage", "Langclaw Order ID", "Workbench Negotiation ID", "Workbench Order ID", "Workbench Service ID", "Provider Agent ID", "Delivery Hash", "Timestamp"],
-      integratedA2a.map((record) => [
-        record.stage,
-        record.orderId ?? "",
-        record.a2aNegotiationId ?? "",
-        record.a2aOrderId ?? "",
-        record.a2aServiceId ?? "",
-        record.a2aProviderAgentId ?? "",
-        record.deliveryHash ?? "",
-        record.generatedAt,
-      ])
-    ),
+    integratedA2a.length
+      ? table(
+          [
+            "Stage",
+            "Langclaw Order ID",
+            "Workbench Negotiation ID",
+            "Workbench Order ID",
+            "Workbench Service ID",
+            "Provider Agent ID",
+            "Delivery Hash",
+            "Timestamp",
+          ],
+          integratedA2a.map((record) => [
+            record.stage,
+            record.orderId ?? "",
+            record.a2aNegotiationId ?? "",
+            record.a2aOrderId ?? "",
+            record.a2aServiceId ?? "",
+            record.a2aProviderAgentId ?? "",
+            record.deliveryHash ?? "",
+            record.generatedAt,
+          ])
+        )
+      : "No integrated A2A Workbench events were captured in the Langclaw order evidence. Use the partner proof below, or enable `LANGCLAW_A2A_WORKBENCH_ENABLED=true` for the next paid onchain smoke.",
     "",
     "## A2A Partner Proof",
     "",
@@ -169,13 +180,22 @@ function buildReport(input: {
     table(
       ["Field", "Value"],
       [
-        ["Requester agent ID", input.smoke?.requesterAgentId ?? ""],
-        ["Requester wallet", input.smoke?.requesterWalletAddress ?? ""],
-        ["Service ID", input.smoke?.serviceId ?? ""],
-        ["Smoke negotiation ID", input.smoke?.negotiationId ?? ""],
-        ["Smoke order ID", input.smoke?.orderId ?? ""],
+        ["Requester agent ID", display(input.smoke?.requesterAgentId, "Not captured in requester smoke summary.")],
+        ["Requester wallet", display(input.smoke?.requesterWalletAddress, "Not captured in requester smoke summary.")],
+        ["Service ID", display(input.smoke?.serviceId, "Not captured in requester smoke summary.")],
+        ["Smoke negotiation ID", display(input.smoke?.negotiationId, "Not captured in requester smoke summary.")],
+        ["Smoke order ID", display(input.smoke?.orderId, "Not captured in requester smoke summary.")],
       ]
     ),
+    "",
+    "## Anti-Sybil Notes",
+    "",
+    `- Unique requester agents captured: ${requesterIds.length}.`,
+    `- Unique requester wallets captured: ${requesterWallets.length}.`,
+    "- Use real requester agents and buyer wallets for final proof.",
+    "- Keep provider and requester keys separate.",
+    "- Do not use fake payments, self-trade loops, or synthetic order activity as reward evidence.",
+    "- Keep redacted logs available for random human audit.",
     "",
     "## Commands",
     "",
@@ -223,6 +243,10 @@ function table(headers: string[], rows: string[][]): string {
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...safeRows.map((row) => `| ${row.map(escapeCell).join(" | ")} |`),
   ].join("\n");
+}
+
+function display(value: string | undefined, fallback: string): string {
+  return value?.trim() ? value : fallback;
 }
 
 function escapeCell(value: string): string {

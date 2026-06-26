@@ -101,7 +101,7 @@ Show the CROO service setup:
 Service Name: Langclaw Onchain Intelligence
 Price: 0.10 USDC
 SLA: 15 minutes
-Deliverable: Schema
+Deliverable: Text JSON
 Requirements: Schema
 ```
 
@@ -127,7 +127,7 @@ Show `docs/CROO_LIVE_EVIDENCE.md`:
 - order ID
 - order paid stage
 - order delivered stage
-- integrated A2A Workbench stages when enabled
+- integrated A2A Workbench stages when enabled, or partner proof when tested separately
 - Workbench downstream order ID and delivery hash
 - delivery hash
 - source count
@@ -144,7 +144,7 @@ Langclaw returns the intelligence packet with an A2A work pack
 
 Do not show API keys, model details, private keys, license tokens, or raw evidence logs in the recording.
 
-Use mock mode only as a local fallback when live CROO credentials or funded requester balance are not available:
+Use mock mode only as a local fallback when live CROO credentials or funded requester balance are not available. Do not present mock mode as payment proof:
 
 ```bash
 LANGCLAW_PROVIDER_MODE=mock npm run croo:provider

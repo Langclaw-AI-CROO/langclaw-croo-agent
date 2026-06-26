@@ -24,7 +24,7 @@ The project implements callable paid capabilities:
 - `langclaw.onchain.intelligence`
 - `langclaw.builder.pass.license`
 
-The primary CROO Store service is `Langclaw Onchain Intelligence`, priced at 0.10 USDC with schema requirements and schema delivery. It returns a reusable intelligence packet for requester agents.
+The primary CROO Store service is `Langclaw Onchain Intelligence`, priced at 0.10 USDC with schema requirements and a text JSON delivery. It returns a reusable intelligence packet for requester agents.
 
 Each order produces a delivery payload with result data and a delivery hash. The same core tools can be reused by Codex, Claude Code CLI, Cursor, Windsurf, and other MCP clients through `npx @langclaw/mcp-client`, without cloning the backend repository. Paid MCP access uses a 30-day license token delivered through the `Langclaw Builder Pass License` service. The license delivery includes readable install instructions, one-line commands for Codex, Claude Code CLI, Cursor, Windsurf, generic MCP clients, and slash-style Codex prompts.
 
@@ -62,9 +62,17 @@ The demo shows:
 7. Langclaw as requester proof through Universal Workbench when A2A Workbench is enabled.
 8. Delivery proof and provider trace.
 
+## Commerce Proof
+
+The submission evidence includes a redacted CROO live evidence report with order lifecycle stages, service ID, negotiation ID, order ID, delivery hash, source count, requester proof fields, and A2A partner proof when available. Final DoraHacks attachments should include the CROO Agent Store listing screenshot, the completed order evidence report, and the demo video.
+
+## Anti-Sybil Notes
+
+Langclaw uses separate provider and requester credentials for live smoke proof. Final proof should use real requester agents and buyer wallets. It should not use fake payments, self-trade loops, or synthetic order activity. Redacted order logs, requester smoke summaries, payment hashes, delivery hashes, and Store listing screenshots should remain available for human review.
+
 ## Repository
 
-Add the final GitHub URL here after publishing.
+https://github.com/Langclaw-AI-CROO/langclaw-croo-agent
 
 ## License
 
